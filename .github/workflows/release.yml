@@ -49,35 +49,21 @@ jobs:
       - name: Organize & Rename APKs
         id: rename_apks
         run: |
-          TAG_NAME=${GITHUB_REF#refs/tags/}
           RELEASE_DIR="${{ github.workspace }}/release-artifacts"
           mkdir -p "$RELEASE_DIR"
-          cd app/build/outputs/apk/release/
+          cd app/build/outputs/apk/debug/
           
           for apk in *.apk; do
-            if [[ "$apk" == *"universal"* ]]; then
-              new_name="AetherST-Tunnel-${TAG_NAME}-universal.apk"
-            elif [[ "$apk" == *"arm64-v8a"* ]]; then
-              new_name="AetherST-Tunnel-${TAG_NAME}-arm64-v8a.apk"
-            elif [[ "$apk" == *"armeabi-v7a"* ]]; then
-              new_name="AetherST-Tunnel-${TAG_NAME}-armeabi-v7a.apk"
-            elif [[ "$apk" == *"x86_64"* ]]; then
-              new_name="AetherST-Tunnel-${TAG_NAME}-x86_64.apk"
-            else
-              new_name="AetherST-Tunnel-${TAG_NAME}-$(echo $apk | rev | cut -d'-' -f2 | rev).apk"
-            fi
-            cp "$apk" "$RELEASE_DIR/$new_name"
+            [ -e "$apk" ] || continue
+            cp "$apk" "$RELEASE_DIR/$apk"
           done
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+      - name: Upload APK Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: release-artifacts/*.apk
-          generate_release_notes: true
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: AetherST-Custom-Debug-APK
+          path: release-artifacts/*.apk
+          retention-days: 7
 
       - name: Cleanup Sensitive Data
         if: always()
