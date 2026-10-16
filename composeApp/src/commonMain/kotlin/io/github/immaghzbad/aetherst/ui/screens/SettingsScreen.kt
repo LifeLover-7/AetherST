@@ -344,7 +344,10 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
         if (config.connectionMode == ConnectionMode.TUNNEL) {
             AppDivider(); IosPickerRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.accentVariant, title = strings.TUNNEL_ENGINE, value = config.tunnelEngine.displayName, options = TunnelEngine.entries.map { it.displayName }, onOptionSelected = { onUpdateTunnelEngine(TunnelEngine.entries[it]) })
             if (!isDesktop) {
-                AppDivider(); IosSwitchRow(icon = Icons.Default.AllInclusive, iconBg = IosActiveBlue, title = strings.TUNNEL_WHOLE_DEVICE, subtitle = strings.TUNNEL_WHOLE_DEVICE_SUB, checked = config.tunnelAllApps, onCheckedChange = { onUpdateConfig(config.copy(tunnelAllApps = it)) }, testTag = "switch_tunnel_all"); AppDivider(); IosPickerRow(icon = Icons.Default.Tune, iconBg = AppPalette.accentVariant, title = strings.SPLIT_TUNNELING, value = if (config.tunnelAllApps) strings.SPLIT_TUNNELING_ALL else "${config.tunneledPackages.size + config.blockedPackages.size} ${strings.SPLIT_TUNNELING_CUSTOM}", options = emptyList(), onOptionSelected = {}, onClickOverride = onOpenSplitTunneling, enabled = !config.tunnelAllApps)
+                AppDivider()
+                IosSwitchRow(icon = Icons.Default.AllInclusive, iconBg = IosActiveBlue, title = strings.TUNNEL_WHOLE_DEVICE, subtitle = strings.TUNNEL_WHOLE_DEVICE_SUB, checked = config.tunnelAllApps, onCheckedChange = { onUpdateConfig(config.copy(tunnelAllApps = it)) }, testTag = "switch_tunnel_all")
+                AppDivider()
+                IosPickerRow(icon = Icons.Default.Tune, iconBg = AppPalette.accentVariant, title = strings.SPLIT_TUNNELING, value = "${config.tunneledPackages.size + config.blockedPackages.size} ${strings.SPLIT_TUNNELING_CUSTOM}", options = emptyList(), onOptionSelected = {}, onClickOverride = onOpenSplitTunneling, enabled = true)
             }
             AppDivider()
         }
