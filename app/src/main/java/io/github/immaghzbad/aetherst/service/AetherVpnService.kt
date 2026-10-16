@@ -526,7 +526,20 @@ class AetherVpnService : VpnService() {
             } catch (e: Exception) {
                 LogRepository.w("[Tun] Failed to disallow self: ${e.message}")
             }
-            LogRepository.i("[Tun] Whole-device: tunneling all apps, split lists ignored")
+            val bypassPackages = config.tunneledPackages + config.blockedPackages
+            var bypassedCount = 0
+            for (pkg in bypassPackages) {
+                if (pkg == packageName) continue
+                try {
+                    builder.addDisallowedApplication(pkg)
+                    bypassedCount++
+                } catch (_: PackageManager.NameNotFoundException) {
+                    LogRepository.w("[Tun] Ignoring uninstalled package: $pkg")
+                } catch (e: Exception) {
+                    LogRepository.w("[Tun] Skipping disallow $pkg: ${e.message}")
+                }
+            }
+            LogRepository.i("[Tun] Whole-device: tunneling all apps EXCEPT $bypassedCount bypassed packages")
         } else {
             if (config.tunneledPackages.isNotEmpty()) {
                 var added = 0
