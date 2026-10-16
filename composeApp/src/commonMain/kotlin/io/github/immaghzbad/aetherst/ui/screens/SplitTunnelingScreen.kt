@@ -83,7 +83,7 @@ fun SplitTunnelingScreen(
 
     val tunneledCount = effectiveTunneled.size
     val blockedCount = blockedPackages.size
-    val bypassCount = if (tunnelAllApps) 0 else (apps.size - tunneledCount - blockedCount).coerceAtLeast(0)
+    val bypassCount = (apps.size - tunneledCount - blockedCount).coerceAtLeast(0)
 
     val filteredApps = remember(apps, searchQuery, selectedTab, effectiveTunneled, blockedPackages, modeFilter) {
         apps.filter { app ->
@@ -116,7 +116,7 @@ fun SplitTunnelingScreen(
             Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(strings.SPLIT_TITLE, fontWeight = FontWeight.Bold, color = Color.White, fontSize = (18 * scaleFactor).sp, lineHeight = (20 * scaleFactor).sp)
-                Text(if (tunnelAllApps) strings.SPLIT_WHOLE_DEVICE_TUNNELED else strings.SPLIT_STATS_TUNNEL_BYPASS_BLOCKED.format(tunneledCount, bypassCount, blockedCount), color = IosSecondaryLabel, fontSize = (11 * scaleFactor).sp)
+                Text(strings.SPLIT_STATS_TUNNEL_BYPASS_BLOCKED.format(tunneledCount, bypassCount, blockedCount), color = IosSecondaryLabel, fontSize = (11 * scaleFactor).sp)
             }
             IconButton(onClick = { showHelpDialog = true }, modifier = Modifier.size((36 * scaleFactor).dp)) { Icon(Icons.Default.Info, null, tint = IosActiveBlue, modifier = Modifier.size((20 * scaleFactor).dp)) }
         }
@@ -127,7 +127,7 @@ fun SplitTunnelingScreen(
                 Spacer(modifier = Modifier.width((8 * scaleFactor).dp))
                 Column {
                     Text(strings.SPLIT_WHOLE_DEVICE_ON, color = Color(0xFFFFD60A), fontWeight = FontWeight.Bold, fontSize = (12 * scaleFactor).sp, textAlign = TextAlign.Start)
-                    Text(strings.SPLIT_WHOLE_DEVICE_ON_DESC, color = Color.White.copy(alpha = 0.6f), fontSize = (11 * scaleFactor).sp, lineHeight = (15 * scaleFactor).sp, textAlign = TextAlign.Start)
+                    Text("هر برنامه‌ای را که در لیست زیر روشن یا مسدود کنید، از تونل کل دستگاه خارج (Bypass) می‌شود.", color = Color.White.copy(alpha = 0.6f), fontSize = (11 * scaleFactor).sp, lineHeight = (15 * scaleFactor).sp, textAlign = TextAlign.Start)
                 }
             }
         } else {
@@ -171,21 +171,19 @@ fun SplitTunnelingScreen(
             }
         }
 
-        if (!tunnelAllApps) {
-            Row(modifier = Modifier.fillMaxWidth().padding(horizontal = (16 * scaleFactor).dp, vertical = (2 * scaleFactor).dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
-                TextButton(onClick = {
-                    val pkgs = filteredApps.filter { effectiveTunneled.contains(it.packageName) || blockedPackages.contains(it.packageName) }.map { it.packageName }
-                    if (pkgs.isNotEmpty()) onBulkUpdateMode(pkgs, 0)
-                }, contentPadding = PaddingValues(horizontal = (8 * scaleFactor).dp, vertical = (2 * scaleFactor).dp)) { Text(strings.SPLIT_BYPASS_ALL, color = IosSecondaryLabel, fontSize = (11 * scaleFactor).sp) }
-                TextButton(onClick = {
-                    val pkgs = filteredApps.filter { !effectiveTunneled.contains(it.packageName) }.map { it.packageName }
-                    if (pkgs.isNotEmpty()) onBulkUpdateMode(pkgs, 1)
-                }, contentPadding = PaddingValues(horizontal = (8 * scaleFactor).dp, vertical = (2 * scaleFactor).dp)) { Text(strings.SPLIT_TUNNEL_ALL, color = IosActiveBlue, fontSize = (11 * scaleFactor).sp, fontWeight = FontWeight.Bold) }
-                TextButton(onClick = {
-                    val pkgs = filteredApps.filter { !blockedPackages.contains(it.packageName) }.map { it.packageName }
-                    if (pkgs.isNotEmpty()) onBulkUpdateMode(pkgs, 2)
-                }, contentPadding = PaddingValues(horizontal = (8 * scaleFactor).dp, vertical = (2 * scaleFactor).dp)) { Text(strings.SPLIT_BLOCK_ALL, color = AppPalette.statusError, fontSize = (11 * scaleFactor).sp, fontWeight = FontWeight.Bold) }
-            }
+        Row(modifier = Modifier.fillMaxWidth().padding(horizontal = (16 * scaleFactor).dp, vertical = (2 * scaleFactor).dp), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = {
+                val pkgs = filteredApps.filter { effectiveTunneled.contains(it.packageName) || blockedPackages.contains(it.packageName) }.map { it.packageName }
+                if (pkgs.isNotEmpty()) onBulkUpdateMode(pkgs, 0)
+            }, contentPadding = PaddingValues(horizontal = (8 * scaleFactor).dp, vertical = (2 * scaleFactor).dp)) { Text(strings.SPLIT_BYPASS_ALL, color = IosSecondaryLabel, fontSize = (11 * scaleFactor).sp) }
+            TextButton(onClick = {
+                val pkgs = filteredApps.filter { !effectiveTunneled.contains(it.packageName) }.map { it.packageName }
+                if (pkgs.isNotEmpty()) onBulkUpdateMode(pkgs, 1)
+            }, contentPadding = PaddingValues(horizontal = (8 * scaleFactor).dp, vertical = (2 * scaleFactor).dp)) { Text(strings.SPLIT_TUNNEL_ALL, color = IosActiveBlue, fontSize = (11 * scaleFactor).sp, fontWeight = FontWeight.Bold) }
+            TextButton(onClick = {
+                val pkgs = filteredApps.filter { !blockedPackages.contains(it.packageName) }.map { it.packageName }
+                if (pkgs.isNotEmpty()) onBulkUpdateMode(pkgs, 2)
+            }, contentPadding = PaddingValues(horizontal = (8 * scaleFactor).dp, vertical = (2 * scaleFactor).dp)) { Text(strings.SPLIT_BLOCK_ALL, color = AppPalette.statusError, fontSize = (11 * scaleFactor).sp, fontWeight = FontWeight.Bold) }
         }
 
         if (isWindowsDesktop) {
@@ -202,7 +200,7 @@ fun SplitTunnelingScreen(
                     effectiveTunneled.contains(app.packageName) -> 1
                     else -> 0
                 }
-                AppLineItem(app = app, mode = mode, onUpdateMode = { m -> onUpdateMode(app.packageName, m) }, enabled = !tunnelAllApps, scaleFactor = scaleFactor)
+                AppLineItem(app = app, mode = mode, onUpdateMode = { m -> onUpdateMode(app.packageName, m) }, enabled = true, scaleFactor = scaleFactor)
             }
         }
     }
