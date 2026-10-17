@@ -383,18 +383,17 @@ class AetherVpnService : VpnService() {
 
                 routingEngine = RoutingEngine(config.routingRules)
 
-                val hasAppSplits = config.blockedPackages.isNotEmpty() || config.tunneledPackages.isNotEmpty()
-                val splitEnforcementNeeded = hasAppSplits || config.routingRules.any { it.mode == RoutingMode.BLOCK || it.mode == RoutingMode.DIRECT }
-                val effectiveEngine = if (
-                    config.tunnelEngine == TunnelEngine.HEV_TUN2SOCKS && splitEnforcementNeeded
-                ) {
-                    LogRepository.i("[VpnService] Effective engine=SOCKS_TUN_BRIDGE reason=split enforcement needs per-UID and per-domain BLOCK and DIRECT")
-                    TunnelEngine.SOCKS_TUN_BRIDGE
-                } else {
-                    LogRepository.i("[VpnService] Effective engine=${config.tunnelEngine} reason=configured engine kept")
-                    config.tunnelEngine
-                }
-                activeTunnelEngine = effectiveEngine
+                val hasDomainRules = config.routingRules.any { it.mode == RoutingMode.BLOCK || it.mode == RoutingMode.DIRECT }
+        val effectiveEngine = if (
+            !config.tunnelAllApps && config.tunnelEngine == TunnelEngine.HEV_TUN2SOCKS && hasDomainRules
+        ) {
+            LogRepository.i("[VpnService] Effective engine=SOCKS_TUN_BRIDGE reason=domain rules need bridge in per-app mode")
+            TunnelEngine.SOCKS_TUN_BRIDGE
+        } else {
+            LogRepository.i("[VpnService] Effective engine=${config.tunnelEngine} (HEV preserved for whole-device split)")
+            config.tunnelEngine
+        }
+        activeTunnelEngine = effectiveEngine
 
                 if (!establishVpnTun(attemptId, effectiveEngine)) throw IllegalStateException("TUN establishment failed")
                 ensureCurrentAttempt(attemptId)
