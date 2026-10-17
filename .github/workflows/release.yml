@@ -46,23 +46,26 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleDebug -Pandroid.injected.build.abi=arm64-v8a
 
-      - name: Organize & Rename APKs
+      - name: Organize & Find APKs
         id: rename_apks
         run: |
           RELEASE_DIR="${{ github.workspace }}/release-artifacts"
           mkdir -p "$RELEASE_DIR"
-          cd app/build/outputs/apk/debug/
           
-          # کپی فایل arm64-v8a یا فایل اصلی debug
-          find . -name "*arm64-v8a*.apk" -exec cp {} "$RELEASE_DIR/AetherST-arm64-v8a.apk" \; || true
-          if [ -z "$(ls -A $RELEASE_DIR)" ]; then
-            cp *.apk "$RELEASE_DIR/"
+          # جستجوی خودکار برای تمام فایل‌های APK تولید شده در هر پوشه‌ای
+          find . -type f -name "*.apk" -exec cp -v {} "$RELEASE_DIR/" \;
+          
+          # بررسی وجود فایل
+          ls -la "$RELEASE_DIR"
+          if [ -z "$(ls -A "$RELEASE_DIR")" ]; then
+            echo "Error: No APK files found in workspace!"
+            exit 1
           fi
 
       - name: Upload APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: AetherST-arm64-v8a-APK
+          name: AetherST-Custom-Debug-APK
           path: release-artifacts/*.apk
           retention-days: 7
 
