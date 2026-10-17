@@ -384,17 +384,17 @@ class AetherVpnService : VpnService() {
                 routingEngine = RoutingEngine(config.routingRules)
 
                 val hasAppSplits = config.blockedPackages.isNotEmpty() || config.tunneledPackages.isNotEmpty()
-        val splitEnforcementNeeded = hasAppSplits || config.routingRules.any { it.mode == RoutingMode.BLOCK || it.mode == RoutingMode.DIRECT }
-        val effectiveEngine = if (
-            config.tunnelEngine == TunnelEngine.HEV_TUN2SOCKS && splitEnforcementNeeded
-        ) {
-            LogRepository.i("[VpnService] Effective engine=SOCKS_TUN_BRIDGE reason=split enforcement needs per-UID and per-domain BLOCK and DIRECT")
-            TunnelEngine.SOCKS_TUN_BRIDGE
-        } else {
-            LogRepository.i("[VpnService] Effective engine=${config.tunnelEngine} reason=configured engine kept")
-            config.tunnelEngine
-        }
-        activeTunnelEngine = effectiveEngine
+                val splitEnforcementNeeded = hasAppSplits || config.routingRules.any { it.mode == RoutingMode.BLOCK || it.mode == RoutingMode.DIRECT }
+                val effectiveEngine = if (
+                    config.tunnelEngine == TunnelEngine.HEV_TUN2SOCKS && splitEnforcementNeeded
+                ) {
+                    LogRepository.i("[VpnService] Effective engine=SOCKS_TUN_BRIDGE reason=split enforcement needs per-UID and per-domain BLOCK and DIRECT")
+                    TunnelEngine.SOCKS_TUN_BRIDGE
+                } else {
+                    LogRepository.i("[VpnService] Effective engine=${config.tunnelEngine} reason=configured engine kept")
+                    config.tunnelEngine
+                }
+                activeTunnelEngine = effectiveEngine
 
                 if (!establishVpnTun(attemptId, effectiveEngine)) throw IllegalStateException("TUN establishment failed")
                 ensureCurrentAttempt(attemptId)
@@ -518,8 +518,8 @@ class AetherVpnService : VpnService() {
         }
 
         if (config.tunnelAllApps) {
-            runCatching { builder.addDisallowedApplication(packageName) }
-            runCatching { builder.addDisallowedApplication(applicationContext.packageName) }
+            try { builder.addDisallowedApplication(packageName) } catch (_: Exception) {}
+            try { builder.addDisallowedApplication(applicationContext.packageName) } catch (_: Exception) {}
 
             val bypassPackages = if (config.blockedPackages.isNotEmpty()) {
                 config.blockedPackages
@@ -539,7 +539,6 @@ class AetherVpnService : VpnService() {
                     LogRepository.w("[Tun] Skipping disallow $pkg: ${e.message}")
                 }
             }
-        }
             LogRepository.i("[Tun] Whole-device: tunneling all apps EXCEPT $bypassedCount bypassed packages")
         } else {
             if (config.tunneledPackages.isNotEmpty()) {
