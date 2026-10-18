@@ -78,9 +78,8 @@ object PsiphonController {
             monitorJob = scope.launch {
                 try {
                     proc.inputStream.bufferedReader().use { reader ->
-                        var line: String?
-                        while (isActive && reader.readLine().also { line = it } != null) {
-                            val l = line ?: break
+                        while (isActive) {
+                            val l = reader.readLine() ?: break
                             parsePsiphonOutput(context, l)
                         }
                     }
