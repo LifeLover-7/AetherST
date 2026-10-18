@@ -3,6 +3,9 @@ package io.github.immaghzbad.aetherst.shared.core
 import io.github.immaghzbad.aetherst.shared.data.LogRepository
 import io.github.immaghzbad.aetherst.platform.getSystemUtils
 import io.github.immaghzbad.aetherst.platform.PlatformContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -25,10 +28,14 @@ object TunHelper {
     private var tailThread: Thread? = null
     @Volatile
     private var targetSocksPort = 1819
+    @Volatile
+    private var currentMtu = TUN_MTU
 
-    fun start(socksTargetPort: Int) {
+    fun start(socksTargetPort: Int, mtu: Int = TUN_MTU) {
         if (isRunning.getAndSet(true)) return
         targetSocksPort = socksTargetPort
+        currentMtu = if (mtu > 0) mtu else TUN_MTU
+
         try {
             val context = PlatformContext()
             try {
@@ -41,7 +48,7 @@ object TunHelper {
             val dataDir = getSystemUtils(context).getFilesDir()
             val dataDirFile = File(dataDir)
 
-            File(dataDir, HEV_YAML).writeText(buildHevConfig(socksTargetPort))
+            File(dataDir, HEV_YAML).writeText(buildHevConfig(socksTargetPort, currentMtu))
             writeParams(socksTargetPort, dataDirFile)
             File(dataDir, STOP_FLAG).delete()
             writeHelperScript(dataDirFile)
@@ -78,25 +85,31 @@ object TunHelper {
             LogRepository.i("[Tun] Stop flag written; helper will clean up routes and core")
         } catch (_: Exception) {
         }
-        forceKillHev()
+        forceKillHevAsync()
     }
 
-    private fun forceKillHev() {
-        try {
-            val isWindows = System.getProperty("os.name").lowercase().contains("win")
-            if (isWindows) {
-                ProcessBuilder("taskkill", "/F", "/T", "/IM", "hev-socks5-tunnel.exe")
-                    .redirectErrorStream(true)
-                    .start()
-                    .waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
-            }
-        } catch (_: Exception) {
+    private fun forceKillHevAsync() {
+        // اجرا در ترد پس‌زمینه بدون مسدود کردن ترد گرافیکی
+        Thread {
+            try {
+                val isWindows = System.getProperty("os.name").lowercase().contains("win")
+                if (isWindows) {
+                    val proc = ProcessBuilder("taskkill", "/F", "/T", "/IM", "hev-socks5-tunnel.exe")
+                        .redirectErrorStream(true)
+                        .start()
+                    proc.waitFor()
+                }
+            } catch (_: Exception) {}
+        }.apply {
+            isDaemon = true
+            name = "HevKiller"
+            start()
         }
     }
 
     fun isActive(): Boolean = isRunning.get()
 
-    private fun buildHevConfig(socksTargetPort: Int): String {
+    private fun buildHevConfig(socksTargetPort: Int, mtu: Int): String {
         val logFile = runCatching {
             val context = PlatformContext()
             val dataDir = getSystemUtils(context).getFilesDir()
@@ -105,7 +118,7 @@ object TunHelper {
         return """
             |tunnel:
             |  name: $TUN_NAME
-            |  mtu: $TUN_MTU
+            |  mtu: $mtu
             |  ipv4: $TUN_IPV4
             |socks5:
             |  address: 127.0.0.1
