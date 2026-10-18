@@ -37,12 +37,22 @@ class DesktopVpnController(private val context: PlatformContext) : VpnController
         connectionController.stop()
     }
 
+    override fun restartVpn() {
+        connectionController.stop()
+        connectionController.start()
+    }
+
     override fun startProxy() {
         connectionController.start()
     }
 
     override fun stopProxy() {
         connectionController.stop()
+    }
+
+    override fun restartProxy() {
+        connectionController.stop()
+        connectionController.start()
     }
 
     override fun submitLoginCode(code: String) {
@@ -310,8 +320,8 @@ class DesktopSystemUtils : SystemUtils {
             fc.dialogTitle = "Select Backup File"
             fc.fileSelectionMode = javax.swing.JFileChooser.FILES_ONLY
             fc.isAcceptAllFileFilterUsed = true
-            fc.addChoosableFileFilter(object : javax.swing.filechooser.FileNameExtensionFilter("AetherST files (*.astf)", "astf") {
-                override fun accept(f: File): Boolean = f.isDirectory || f.name.endsWith(".astf")
+            fc.addChoosableFileFilter(object : javax.swing.filechooser.FileFilter() {
+                override fun accept(f: File): Boolean = f.isDirectory || f.name.endsWith(".astf", ignoreCase = true)
                 override fun getDescription(): String = "AetherST files (*.astf)"
             })
             fc.fileFilter = fc.choosableFileFilters.last()
@@ -350,7 +360,7 @@ class DesktopSystemUtils : SystemUtils {
             ProcessBuilder("reg", "add", regPath, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f").start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
             ProcessBuilder("reg", "add", regPath, "/v", "ProxyServer", "/t", "REG_SZ", "/d", proxyStr, "/f").start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
             ProcessBuilder("reg", "add", regPath, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", bypass, "/f").start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
-            val psCommand = "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class WinInet { [DllImport(\"wininet.dll\")] public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength); }'; [WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null; [WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null"
+            val psCommand = "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class WinInet { [DllImport(\"wininet.dll\")] public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, int dwBufferLength); }'; [WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null; [WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null"
             ProcessBuilder("powershell", "-WindowStyle", "Hidden", "-Command", psCommand).start().waitFor(8, java.util.concurrent.TimeUnit.SECONDS)
             try { io.github.immaghzbad.aetherst.shared.data.LogRepository.i("[SystemProxy] set $proxyStr bypass=$bypass") } catch (_: Throwable) {}
         } catch (_: Exception) {}
