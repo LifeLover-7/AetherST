@@ -4,6 +4,9 @@ import io.github.immaghzbad.aetherst.platform.PlatformContext
 import java.io.File
 
 class DesktopBinaryManager : BinaryManager {
+
+    fun prepareBinary(): String = prepareBinary("aether")
+
     override fun prepareBinary(name: String): String {
         val binName = if (System.getProperty("os.name").lowercase().contains("win")) {
             if (name.endsWith(".exe")) name else "$name.exe"
@@ -42,6 +45,8 @@ class DesktopBinaryManager : BinaryManager {
         if (!targetDir.exists()) targetDir.mkdirs()
         val targetFile = File(targetDir, binName)
 
+        val needsLibs = binName.contains("hev-socks5-tunnel")
+
         if (!targetFile.exists()) {
             try {
                 val stream = getResourceStream(binName) ?: getResourceStream("bin/$binName")
@@ -49,14 +54,14 @@ class DesktopBinaryManager : BinaryManager {
                     targetFile.outputStream().use { output -> input.copyTo(output) }
                     if (!System.getProperty("os.name").lowercase().contains("win")) targetFile.setExecutable(true)
                 }
-                if (binName.contains("hev-socks5-tunnel")) {
+                if (needsLibs) {
                     extractResource("wintun.dll", targetDir)
                     extractResource("msys-2.0.dll", targetDir)
                 }
             } catch (_: Exception) {}
         } else {
             try {
-                if (binName.contains("hev-socks5-tunnel")) {
+                if (needsLibs) {
                     extractResource("wintun.dll", targetDir)
                     extractResource("msys-2.0.dll", targetDir)
                 }
