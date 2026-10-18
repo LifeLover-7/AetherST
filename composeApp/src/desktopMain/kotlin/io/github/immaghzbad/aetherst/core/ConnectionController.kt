@@ -4,6 +4,7 @@ import io.github.immaghzbad.aetherst.shared.data.AetherConfigRepository
 import io.github.immaghzbad.aetherst.shared.data.LogRepository
 import io.github.immaghzbad.aetherst.shared.model.*
 import io.github.immaghzbad.aetherst.core.CloakController
+import io.github.immaghzbad.aetherst.core.PsiphonController
 import io.github.immaghzbad.aetherst.platform.PlatformContext
 import io.github.immaghzbad.aetherst.platform.getSettings
 import io.github.immaghzbad.aetherst.platform.getTrafficProvider
@@ -98,7 +99,6 @@ actual object ConnectionController {
         }
 
         fun start() {
-            // فوراً وضعیت را به STARTING ببرید تا UI بدون فوت وقت واکنش نشان دهد
             _status.value = ConnectionStatus.STARTING
             scope.launch {
                 actionMutex.withLock {
@@ -118,6 +118,8 @@ actual object ConnectionController {
             }
             val config = AetherConfigRepository.getInstance(getSettings(context)).config.value.effectiveZeroTrustConfig()
             var effectiveConfig = config
+
+            // ۱. بررسی و فعال‌سازی کلوک در صورت فعال بودن
             try {
                 if (CloakController.isSupported(config)) {
                     val started = try { CloakController.start(context, config) } catch (_: Throwable) { false }
@@ -129,6 +131,26 @@ actual object ConnectionController {
                     }
                 }
             } catch (_: Throwable) {}
+
+            // ۲. بررسی و فعال‌سازی زنجیره‌سازی سایفون (Psiphon Chaining)
+            try {
+                if (PsiphonController.isSupported(effectiveConfig)) {
+                    val psiphonStarted = PsiphonController.start(context, effectiveConfig)
+                    if (psiphonStarted) {
+                        val upstream = PsiphonController.getUpstreamProxy()
+                        effectiveConfig = effectiveConfig.copy(
+                            upstreamProxyEnabled = true,
+                            upstreamProxy = upstream
+                        )
+                        LogRepository.i("[Controller] Psiphon active, chaining Aether via $upstream", "Psiphon")
+                    } else {
+                        LogRepository.w("[Controller] Psiphon failed to start, falling back to direct", "Psiphon")
+                    }
+                }
+            } catch (t: Throwable) {
+                LogRepository.e("[Controller] Error initializing Psiphon chaining: ${t.message}", "Psiphon")
+            }
+
             baseTx = trafficProvider.getTxBytes()
             baseRx = trafficProvider.getRxBytes()
 
@@ -158,6 +180,7 @@ actual object ConnectionController {
                 routingEngine = routingEngine!!
             ).apply { start() }
             LogRepository.i("[Controller] Counting proxies started (socks=10808, http=10809) -> core $coreSocksPort")
+
             if (effectiveConfig.connectionMode == ConnectionMode.TUNNEL || effectiveConfig.connectionMode == ConnectionMode.SYSTEM_PROXY) {
                 val dnsUpstream = (if (effectiveConfig.dnsEnabled) effectiveConfig.dnsList else "").ifEmpty { "1.1.1.1,1.0.0.1" }
                 val tmpDns = LocalDnsServer(listenHost = "127.0.0.1", listenPort = 53, socksHost = "127.0.0.1", socksPort = coreSocksPort, upstreamList = dnsUpstream)
@@ -217,7 +240,6 @@ actual object ConnectionController {
         }
 
         fun stop() {
-            // فوراً وضعیت را STOPPED کنید تا انیمیشن دکمه بدون تأخیر برگردد
             _status.value = ConnectionStatus.STOPPED
             stopTimer()
             scope.launch {
@@ -231,6 +253,8 @@ actual object ConnectionController {
 
         private fun doStop() {
             runner.stop()
+            try { PsiphonController.stop() } catch (_: Throwable) {}
+            try { CloakController.stop() } catch (_: Throwable) {}
             modeJob?.cancel()
             modeJob = null
             try { getSystemUtils(context).clearSystemProxy() } catch (_: Throwable) {}
@@ -243,7 +267,6 @@ actual object ConnectionController {
             httpProxy = null
             tunnelModeStarted = false
             TunHelper.stop()
-            try { CloakController.stop() } catch (_: Throwable) {}
             routingEngine = null
             statusJob?.cancel()
             statusJob = null
