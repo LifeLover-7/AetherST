@@ -28,6 +28,31 @@ jobs:
         run: git update-index --chmod=+x gradlew
         shell: bash
 
+      - name: Prepare and Download Cores (Aether v2.3.0 & Psiphon)
+        shell: bash
+        run: |
+          mkdir -p composeApp/src/desktopMain/resources/bin
+
+          # حذف فایل‌های قدیمی یا اشتباهی
+          rm -f composeApp/src/desktopMain/resources/bin/aether.exe
+          rm -f composeApp/src/desktopMain/resources/bin/server_entries.txt
+
+          echo "Downloading Psiphon tunnel core..."
+          curl -L -f -o composeApp/src/desktopMain/resources/bin/psiphon-tunnel-core.exe https://raw.githubusercontent.com/Psiphon-Labs/psiphon-tunnel-core-binaries/master/windows/psiphon-tunnel-core-i686.exe
+
+          echo "Downloading latest official Aether Core (v2.3.0)..."
+          curl -L -f -o aether.zip https://github.com/CluvexStudio/Aether/releases/latest/download/aether-windows-x86_64.zip
+          unzip -o aether.zip -d composeApp/src/desktopMain/resources/bin/
+          rm -f aether.zip
+
+          # اطمینان از وجود سرور انتری‌ها از بخش اندروید
+          if [ -f "app/src/main/assets/server_entries.txt" ]; then
+            cp app/src/main/assets/server_entries.txt composeApp/src/desktopMain/resources/server_entries.txt
+          fi
+
+          echo "=== Files in bin directory ==="
+          ls -la composeApp/src/desktopMain/resources/bin
+
       - name: Build EXE and MSI
         run: ./gradlew :composeApp:packageReleaseDistributionForCurrentOS
 
