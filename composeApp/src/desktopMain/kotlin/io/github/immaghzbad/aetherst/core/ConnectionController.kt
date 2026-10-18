@@ -12,9 +12,9 @@ import io.github.immaghzbad.aetherst.shared.platform.Bridge
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
-import java.io.File
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.Duration.Companion.seconds
 
 actual object ConnectionController {
     private val _isWaitingForCode = MutableStateFlow(false)
@@ -56,6 +56,7 @@ actual object ConnectionController {
 
     class ControllerImpl(private val context: PlatformContext) {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        private val actionMutex = Mutex()
         private val runner = AetherProcessRunner(context)
         private val trafficProvider = getTrafficProvider(context)
         private val loginCodeChannel = Channel<String>(Channel.UNLIMITED)
@@ -97,6 +98,18 @@ actual object ConnectionController {
         }
 
         fun start() {
+            // فوراً وضعیت را به STARTING ببرید تا UI بدون فوت وقت واکنش نشان دهد
+            _status.value = ConnectionStatus.STARTING
+            scope.launch {
+                actionMutex.withLock {
+                    withContext(Dispatchers.IO) {
+                        doStart()
+                    }
+                }
+            }
+        }
+
+        private fun doStart() {
             LogRepository.i("Initializing connection process...", "AetherSystem")
             if (statusJob == null) {
                 statusJob = scope.launch {
@@ -119,7 +132,7 @@ actual object ConnectionController {
             baseTx = trafficProvider.getTxBytes()
             baseRx = trafficProvider.getRxBytes()
 
-            getSystemUtils(context).clearSystemProxy()
+            try { getSystemUtils(context).clearSystemProxy() } catch (_: Throwable) {}
 
             runner.start(
                 config = effectiveConfig,
@@ -160,7 +173,7 @@ actual object ConnectionController {
 
             modeJob?.cancel()
             if (effectiveConfig.connectionMode == ConnectionMode.TUNNEL) {
-                modeJob = scope.launch {
+                modeJob = scope.launch(Dispatchers.IO) {
                     status.collect { s ->
                         if (s == ConnectionStatus.RUNNING) {
                             delay(500.milliseconds)
@@ -169,7 +182,7 @@ actual object ConnectionController {
                     }
                 }
             } else if (effectiveConfig.connectionMode == ConnectionMode.SYSTEM_PROXY) {
-                modeJob = scope.launch {
+                modeJob = scope.launch(Dispatchers.IO) {
                     status.collect { s ->
                         if (s == ConnectionStatus.RUNNING) {
                             delay(500.milliseconds)
@@ -203,29 +216,37 @@ actual object ConnectionController {
             LogRepository.i("[Controller] TUN helper started mtu=${config.mtu}")
         }
 
-        private val stopLock = Any()
-
         fun stop() {
-            synchronized(stopLock) {
-                runner.stop()
-                stopTimer()
-                modeJob?.cancel()
-                modeJob = null
-                getSystemUtils(context).clearSystemProxy()
-                try { getSystemUtils(context).clearSystemDns() } catch (_: Throwable) {}
-                dnsServer?.stop()
-                dnsServer = null
-                socksProxy?.stop()
-                socksProxy = null
-                httpProxy?.stop()
-                httpProxy = null
-                tunnelModeStarted = false
-                TunHelper.stop()
-                try { CloakController.stop() } catch (_: Throwable) {}
-                routingEngine = null
-                statusJob?.cancel()
-                statusJob = null
+            // فوراً وضعیت را STOPPED کنید تا انیمیشن دکمه بدون تأخیر برگردد
+            _status.value = ConnectionStatus.STOPPED
+            stopTimer()
+            scope.launch {
+                actionMutex.withLock {
+                    withContext(Dispatchers.IO) {
+                        doStop()
+                    }
+                }
             }
+        }
+
+        private fun doStop() {
+            runner.stop()
+            modeJob?.cancel()
+            modeJob = null
+            try { getSystemUtils(context).clearSystemProxy() } catch (_: Throwable) {}
+            try { getSystemUtils(context).clearSystemDns() } catch (_: Throwable) {}
+            dnsServer?.stop()
+            dnsServer = null
+            socksProxy?.stop()
+            socksProxy = null
+            httpProxy?.stop()
+            httpProxy = null
+            tunnelModeStarted = false
+            TunHelper.stop()
+            try { CloakController.stop() } catch (_: Throwable) {}
+            routingEngine = null
+            statusJob?.cancel()
+            statusJob = null
         }
 
         private fun startTimer() {
