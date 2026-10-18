@@ -29,6 +29,8 @@ object PsiphonController {
         return config.psiphonEnabled
     }
 
+    fun getPort(): Int = psiphonPort
+
     fun getUpstreamProxy(): String {
         return "socks5://127.0.0.1:$psiphonPort"
     }
@@ -53,19 +55,16 @@ object PsiphonController {
             val port = if (requested.toString() == config.socksPort) findFreePort() else requested
             psiphonPort = port
 
-            // آماده‌سازی باینری psiphon-tunnel-core.exe
             val binManager = getBinaryManager(context)
             val binaryPath = binManager.prepareBinary("psiphon-tunnel-core.exe")
 
-            // کپی سرور انتری‌ها در صورت وجود در ریسورس‌ها
             copyServerEntriesIfAvailable(psiphonDir)
 
-            // تولید فایل کانفیگ JSON
             val configFile = File(psiphonDir, "psiphon.config")
             val configJson = buildPsiphonConfig(psiphonDir, port, config.psiphonEgressRegion, upstream)
             configFile.writeText(configJson)
 
-            LogRepository.i("Launching Psiphon core on port $port...", "Psiphon")
+            LogRepository.i("Launching Psiphon core on port $port (upstream=${upstream ?: "direct"})...", "Psiphon")
 
             val pb = ProcessBuilder(binaryPath, "-config", configFile.absolutePath)
             pb.directory(psiphonDir)
@@ -75,7 +74,6 @@ object PsiphonController {
             process = proc
             running = true
 
-            // مانیتور کردن خروجی سایفون به صورت آسنکرون
             monitorJob?.cancel()
             monitorJob = scope.launch {
                 try {
@@ -89,8 +87,6 @@ object PsiphonController {
                 } catch (_: Exception) {}
             }
 
-            // مهلت کوتاه برای اطمینان از بایند شدن سوکت
-            Thread.sleep(800)
             isStarting.set(false)
             true
         } catch (e: Exception) {
@@ -105,7 +101,6 @@ object PsiphonController {
     private fun parsePsiphonOutput(context: PlatformContext, line: String) {
         val lower = line.lowercase()
 
-        // استخراج نوتیس پورت SOCKS
         if (line.contains("ListeningSocksProxyPort", ignoreCase = true)) {
             val portMatch = Regex(""""port":\s*(\d+)""").find(line)
             val p = portMatch?.groupValues?.get(1)?.toIntOrNull() ?: psiphonPort
@@ -113,7 +108,6 @@ object PsiphonController {
             LogRepository.i("Psiphon listening on $p", "Psiphon")
         }
 
-        // بررسی وضعیت برقراری تانل
         if (line.contains("ActiveTunnel", ignoreCase = true) ||
             line.contains("Tunnels", ignoreCase = true) ||
             line.contains("tunnel connected", ignoreCase = true)) {
@@ -122,7 +116,6 @@ object PsiphonController {
             LogRepository.i("Psiphon tunnel connected successfully", "Psiphon")
         }
 
-        // استخراج ریجن‌های فعال
         if (line.contains("AvailableEgressRegions", ignoreCase = true) || line.contains("regions", ignoreCase = true)) {
             val regions = Regex(""""([A-Z]{2})"""").findAll(line)
                 .map { it.groupValues[1] }
@@ -191,7 +184,6 @@ object PsiphonController {
             try {
                 process?.destroy()
                 process = null
-                // کشتن پروسه به صورت امن در ویندوز
                 val isWindows = System.getProperty("os.name").lowercase().contains("win")
                 if (isWindows) {
                     ProcessBuilder("taskkill", "/F", "/T", "/IM", "psiphon-tunnel-core.exe")
