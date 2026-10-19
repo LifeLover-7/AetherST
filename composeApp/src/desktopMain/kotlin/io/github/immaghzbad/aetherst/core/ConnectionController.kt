@@ -15,6 +15,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.net.InetSocketAddress
+import java.net.Socket
 import kotlin.time.Duration.Companion.milliseconds
 
 actual object ConnectionController {
@@ -56,7 +58,7 @@ actual object ConnectionController {
     }
 
     class ControllerImpl(private val context: PlatformContext) {
-        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val actionMutex = Mutex()
         private val runner = AetherProcessRunner(context)
         private val trafficProvider = getTrafficProvider(context)
@@ -67,6 +69,7 @@ actual object ConnectionController {
         private var baseRx = 0L
         private var prevTx = 0L
         private var prevRx = 0L
+
         @Volatile private var socksProxy: LocalSocksProxyServer? = null
         @Volatile private var httpProxy: LocalHttpProxyServer? = null
         @Volatile private var dnsServer: LocalDnsServer? = null
@@ -74,7 +77,6 @@ actual object ConnectionController {
         @Volatile private var activeTargetPort = 1819
         private var routingEngine: RoutingEngine? = null
         private var statusJob: Job? = null
-        private var modeJob: Job? = null
 
         init {
             scope.launch {
@@ -88,87 +90,109 @@ actual object ConnectionController {
                 }
             }
             scope.launch {
-                Bridge.trafficOverride.collect {
-                    if (it != null) _sessionTraffic.value = it
-                }
+                Bridge.trafficOverride.collect { if (it != null) _sessionTraffic.value = it }
             }
             scope.launch {
-                Bridge.elapsedOverride.collect {
-                    if (it != null) _elapsedSeconds.value = it
-                }
+                Bridge.elapsedOverride.collect { if (it != null) _elapsedSeconds.value = it }
             }
         }
 
         fun start() {
-            _status.value = ConnectionStatus.STARTING
             scope.launch {
                 actionMutex.withLock {
-                    withContext(Dispatchers.IO) {
-                        doStart()
-                    }
+                    if (_status.value == ConnectionStatus.RUNNING || _status.value == ConnectionStatus.VALIDATING) return@withLock
+                    _status.value = ConnectionStatus.STARTING
+                    doStart()
                 }
             }
         }
 
-        private fun doStart() {
-            LogRepository.i("Initializing connection process...", "AetherSystem")
-            if (statusJob == null) {
-                statusJob = scope.launch {
-                    runner.connectionStatus.collect { _status.value = it }
-                }
-            }
+        private suspend fun doStart() {
+            LogRepository.i("[Controller] Initializing connection process...", "AetherSystem")
+
             val config = AetherConfigRepository.getInstance(getSettings(context)).config.value.effectiveZeroTrustConfig()
             var effectiveConfig = config
 
-            try {
-                if (CloakController.isSupported(config)) {
-                    val started = try { CloakController.start(context, config) } catch (_: Throwable) { false }
-                    if (started && CloakController.isRunning()) {
-                        effectiveConfig = config.copy(peer = CloakController.getEffectivePeer(config))
-                        LogRepository.i("[Controller] Cloak active, routing MASQUE via ${effectiveConfig.peer}", "Cloak")
-                    } else if (started) {
-                        LogRepository.w("[Controller] Cloak start reported success but not running, fallback to direct peer", "Cloak")
-                    }
+            if (CloakController.isSupported(config)) {
+                val started = runCatching { CloakController.start(context, config) }.getOrDefault(false)
+                if (started && CloakController.isRunning()) {
+                    effectiveConfig = config.copy(peer = CloakController.getEffectivePeer(config))
+                    LogRepository.i("[Controller] Cloak active, routing via ${effectiveConfig.peer}", "Cloak")
                 }
-            } catch (_: Throwable) {}
+            }
 
             baseTx = trafficProvider.getTxBytes()
             baseRx = trafficProvider.getRxBytes()
 
-            try { getSystemUtils(context).clearSystemProxy() } catch (_: Throwable) {}
-
             val coreSocksPort = effectiveConfig.socksPort.toIntOrNull() ?: 1819
+            val httpPort = effectiveConfig.httpPort.toIntOrNull() ?: 1820
 
-            // ۱. استارت هسته اصلی Aether روی پورت لوکال (مثلاً 1819)
+            // ۱. گوش دادن به وضعیت هسته (بدون بازگرداندن وضعیت به STOPPED در شروع)
+            statusJob?.cancel()
+            statusJob = scope.launch {
+                runner.connectionStatus.collect { s ->
+                    if (_status.value != ConnectionStatus.STOPPED && s != ConnectionStatus.STOPPED) {
+                        _status.value = s
+                    }
+                }
+            }
+
+            // ۲. استارت هسته اصلی (با فعال کردن پروکسی HTTP جهت اتصال سایفون)
             runner.start(
-                config = effectiveConfig,
+                config = effectiveConfig.copy(httpProxyEnabled = true),
                 bindAddress = "127.0.0.1:$coreSocksPort",
                 onCodeRequired = { _isWaitingForCode.value = true },
                 inputProvider = { loginCodeChannel.receive() }
             )
 
-            // ۲. اگر زنجیره‌سازی سایفون فعال است، سایفون را از داخل تونل Aether عبور بده
+            // ۳. صبر تا زمانی که هسته وایرگارد یا مسک متصل و آماده شود (مشابه اندروید)
+            var coreReady = false
+            for (i in 0..40) {
+                if (runner.connectionStatus.value == ConnectionStatus.RUNNING || probePort("127.0.0.1", coreSocksPort)) {
+                    coreReady = true
+                    break
+                }
+                delay(300.milliseconds)
+            }
+
+            if (!coreReady) {
+                LogRepository.w("[Controller] Core not listening yet, continuing startup sequence")
+            }
+
+            // ۴. اگر سایفون فعال است، آن را از بستر HTTP هسته اصلی عبور بده (دقیقاً مثل اندروید)
             var effectiveTargetPort = coreSocksPort
-            try {
-                if (PsiphonController.isSupported(effectiveConfig)) {
-                    val psiphonStarted = PsiphonController.start(
-                        context = context,
-                        config = effectiveConfig,
-                        upstream = "socks5://127.0.0.1:$coreSocksPort"
-                    )
-                    if (psiphonStarted) {
+            if (PsiphonController.isSupported(effectiveConfig)) {
+                _status.value = ConnectionStatus.VALIDATING
+                LogRepository.i("[Controller] Chaining Psiphon over HTTP proxy 127.0.0.1:$httpPort", "Psiphon")
+                
+                val psiphonStarted = PsiphonController.start(
+                    context = context,
+                    config = effectiveConfig,
+                    upstream = "http://127.0.0.1:$httpPort"
+                )
+
+                if (psiphonStarted) {
+                    var psiphonReady = false
+                    for (i in 0..30) {
+                        if (PsiphonController.isConnected() || PsiphonController.probeListening()) {
+                            psiphonReady = true
+                            break
+                        }
+                        delay(1000.milliseconds)
+                    }
+
+                    if (psiphonReady) {
                         effectiveTargetPort = PsiphonController.getPort()
-                        LogRepository.i("[Controller] Psiphon Chain active: Windows(10808) -> Psiphon($effectiveTargetPort) -> Aether($coreSocksPort)", "Psiphon")
+                        LogRepository.i("[Controller] Psiphon Chain ready! Port: $effectiveTargetPort", "Psiphon")
                     } else {
-                        LogRepository.w("[Controller] Psiphon failed to start, using direct Aether port $coreSocksPort", "Psiphon")
+                        LogRepository.w("[Controller] Psiphon wait timed out, falling back to direct port $coreSocksPort", "Psiphon")
                     }
                 }
-            } catch (t: Throwable) {
-                LogRepository.e("[Controller] Error starting Psiphon chain: ${t.message}", "Psiphon")
             }
+
             activeTargetPort = effectiveTargetPort
 
-            // ۳. هدایت پراکسی‌های شمارنده ویندوز به پورت نهایی (سایفون یا Aether)
+            // ۵. راه‌اندازی پراکسی‌های داخلی و روتینگ
             routingEngine = RoutingEngine(effectiveConfig.routingRules)
             socksProxy = LocalSocksProxyServer(
                 listenHost = "127.0.0.1",
@@ -177,6 +201,7 @@ actual object ConnectionController {
                 targetPort = effectiveTargetPort,
                 routingEngine = routingEngine!!
             ).apply { start() }
+
             httpProxy = LocalHttpProxyServer(
                 listenHost = "127.0.0.1",
                 listenPort = 10809,
@@ -184,85 +209,46 @@ actual object ConnectionController {
                 targetPort = effectiveTargetPort,
                 routingEngine = routingEngine!!
             ).apply { start() }
-            LogRepository.i("[Controller] Counting proxies started (socks=10808, http=10809) -> target $effectiveTargetPort")
 
-            if (effectiveConfig.connectionMode == ConnectionMode.TUNNEL || effectiveConfig.connectionMode == ConnectionMode.SYSTEM_PROXY) {
-                val dnsUpstream = (if (effectiveConfig.dnsEnabled) effectiveConfig.dnsList else "").ifEmpty { "1.1.1.1,1.0.0.1" }
-                val tmpDns = LocalDnsServer(listenHost = "127.0.0.1", listenPort = 53, socksHost = "127.0.0.1", socksPort = effectiveTargetPort, upstreamList = dnsUpstream)
-                tmpDns.start()
-                if (tmpDns.isRunning()) {
-                    dnsServer = tmpDns
-                    try { getSystemUtils(context).setSystemDns("127.0.0.1") } catch (_: Throwable) {}
-                } else {
-                    LogRepository.w("[Controller] DNS relay failed to bind 53 (needs admin), using system DNS $dnsUpstream without relay")
-                    try { getSystemUtils(context).setSystemDns(dnsUpstream) } catch (_: Throwable) {}
-                }
-            }
-
-            modeJob?.cancel()
+            // ۶. فعال‌سازی حالت مدنظر (TUNNEL یا SYSTEM PROXY)
             if (effectiveConfig.connectionMode == ConnectionMode.TUNNEL) {
-                modeJob = scope.launch(Dispatchers.IO) {
-                    status.collect { s ->
-                        if (s == ConnectionStatus.RUNNING) {
-                            delay(500.milliseconds)
-                            startTunnelMode(effectiveConfig)
-                        }
-                    }
-                }
+                startTunnelMode(effectiveConfig, effectiveTargetPort)
             } else if (effectiveConfig.connectionMode == ConnectionMode.SYSTEM_PROXY) {
-                modeJob = scope.launch(Dispatchers.IO) {
-                    status.collect { s ->
-                        if (s == ConnectionStatus.RUNNING) {
-                            delay(500.milliseconds)
-                            getSystemUtils(context).setSystemProxy("127.0.0.1", 10809)
-                        }
-                    }
-                }
+                getSystemUtils(context).setSystemProxy("127.0.0.1", 10809)
             }
 
+            _status.value = ConnectionStatus.RUNNING
             startTimer()
         }
 
-        private fun startTunnelMode(config: AetherConfig) {
+        private fun startTunnelMode(config: AetherConfig, targetPort: Int) {
             if (tunnelModeStarted) return
             tunnelModeStarted = true
-
-            if (socksProxy == null) {
-                if (routingEngine == null) routingEngine = RoutingEngine(config.routingRules)
-                socksProxy = LocalSocksProxyServer(
-                    listenHost = "127.0.0.1",
-                    listenPort = 10808,
-                    targetHost = "127.0.0.1",
-                    targetPort = activeTargetPort,
-                    routingEngine = routingEngine!!
-                ).apply { start() }
-            }
-            LogRepository.i("[Controller] Local SOCKS bridge listening on 127.0.0.1:10808 -> $activeTargetPort")
-
-            TunHelper.start(activeTargetPort, config.mtu)
-            LogRepository.i("[Controller] TUN helper started mtu=${config.mtu}")
+            TunHelper.start(targetPort, config.mtu)
+            LogRepository.i("[Controller] TUN helper started pointing to $targetPort")
         }
 
         fun stop() {
-            _status.value = ConnectionStatus.STOPPED
-            stopTimer()
             scope.launch {
                 actionMutex.withLock {
-                    withContext(Dispatchers.IO) {
-                        doStop()
-                    }
+                    if (_status.value == ConnectionStatus.STOPPED) return@withLock
+                    _status.value = ConnectionStatus.STOPPED
+                    stopTimer()
+                    doStop()
                 }
             }
         }
 
         private fun doStop() {
+            LogRepository.i("[Controller] Stopping all components")
+            statusJob?.cancel()
+            statusJob = null
+
             try { PsiphonController.stop() } catch (_: Throwable) {}
             runner.stop()
             try { CloakController.stop() } catch (_: Throwable) {}
-            modeJob?.cancel()
-            modeJob = null
+
             try { getSystemUtils(context).clearSystemProxy() } catch (_: Throwable) {}
-            try { getSystemUtils(context).clearSystemDns() } catch (_: Throwable) {}
             dnsServer?.stop()
             dnsServer = null
             socksProxy?.stop()
@@ -272,8 +258,15 @@ actual object ConnectionController {
             tunnelModeStarted = false
             TunHelper.stop()
             routingEngine = null
-            statusJob?.cancel()
-            statusJob = null
+        }
+
+        private suspend fun probePort(host: String, port: Int): Boolean = withContext(Dispatchers.IO) {
+            runCatching {
+                Socket().use {
+                    it.connect(InetSocketAddress(host, port), 500)
+                    true
+                }
+            }.getOrDefault(false)
         }
 
         private fun startTimer() {
@@ -301,8 +294,7 @@ actual object ConnectionController {
         private fun updateTraffic() {
             val socksStats = socksProxy?.getStats()
             val httpStats = httpProxy?.getStats()
-            val hasCounting = socksStats != null || httpStats != null
-            if (hasCounting) {
+            if (socksStats != null || httpStats != null) {
                 val totalTx = (socksStats?.txBytes ?: 0L) + (httpStats?.txBytes ?: 0L)
                 val totalRx = (socksStats?.rxBytes ?: 0L) + (httpStats?.rxBytes ?: 0L)
                 val uploadSpeed = (totalTx - prevTx).coerceAtLeast(0L).toDouble()
