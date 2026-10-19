@@ -29,7 +29,7 @@ object TunHelper {
         if (isRunning.getAndSet(true)) return
         targetSocksPort = socksTargetPort
         
-        // MTU تونل وایرگارد و مسک نباید از 1360 بیشتر باشد تا پکت‌ها سیاهچاله نشوند
+        // اطمینان از اینکه MTU در بازه مجاز کپسوله‌سازی وایرگارد باشد
         val safeMtu = if (configuredMtu in 1200..1360) configuredMtu else DEFAULT_TUN_MTU
 
         try {
@@ -78,7 +78,6 @@ object TunHelper {
             LogRepository.i("[Tun] Stop flag written; helper cleaning up")
         } catch (_: Exception) {}
 
-        // بستن پروسه به صورت کاملاً غیرمسدودکننده در پس‌زمینه
         Thread {
             try {
                 if (System.getProperty("os.name").lowercase().contains("win")) {
@@ -161,11 +160,19 @@ object TunHelper {
             |${'$'}logFile = Join-Path ${'$'}data '$HELPER_LOG'
             |function L(${'$'}m) { "${'$'}(Get-Date -Format 'HH:mm:ss') ${'$'}m" | Out-File ${'$'}logFile -Append }
             |function Add-TunRoutes(${'$'}ifIndex) {
-            |    try { Set-NetIPInterface -InterfaceIndex ${'$'}ifIndex -InterfaceMetric 1 -ErrorAction SilentlyContinue | Out-Null } catch {}
+            |    try { 
+            |        Set-NetIPInterface -InterfaceIndex ${'$'}ifIndex -InterfaceMetric 1 -NlMtu ${'$'}params.mtu -ErrorAction SilentlyContinue | Out-Null
+            |        netsh interface ipv4 set subinterface ${'$'}ifIndex mtu=${'$'}params.mtu store=active 2>&1 | Out-Null
+            |    } catch {}
             |    ${'$'}r1 = route add 0.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1
             |    ${'$'}r2 = route add 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1
             |    L "route add: ${'$'}r1"
             |    L "route add: ${'$'}r2"
+            |    # مسدود کردن نشت ترافیک IPv6 به اینترنت فیلترشده تا سایت‌های Dual-Stack ناقص لود نشوند
+            |    try {
+            |        New-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -Direction Outbound -Action Block -RemoteAddress '::/0' -ErrorAction SilentlyContinue | Out-Null
+            |        L "IPv6 leak protection activated"
+            |    } catch {}
             |}
             |function Test-TunRoutes {
             |    ${'$'}t = route print -4 | Select-String "128.0.0.0"
@@ -199,8 +206,12 @@ object TunHelper {
             |    exit 1
             |}
             |L "adapter found index ${'$'}ifIndex"
-            |try { Set-NetIPInterface -InterfaceIndex ${'$'}ifIndex -InterfaceMetric 1 -ErrorAction SilentlyContinue | Out-Null } catch {}
+            |try { Set-NetIPInterface -InterfaceIndex ${'$'}ifIndex -InterfaceMetric 1 -NlMtu ${'$'}params.mtu -ErrorAction SilentlyContinue | Out-Null } catch {}
             |try { Set-DnsClientServerAddress -InterfaceIndex ${'$'}ifIndex -ServerAddresses ${'$'}params.dnsFake -ErrorAction Stop | Out-Null } catch { netsh interface ipv4 set dnsservers name="$(${'$'}params.tunName)" static ${'$'}params.dnsFake primary 2>&1 | Out-Null }
+            |${'$'}check = (Get-DnsClientServerAddress -InterfaceIndex ${'$'}ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
+            |${'$'}dnsOk = ${'$'}false
+            |if (${'$'}check -contains ${'$'}params.dnsFake) { ${'$'}dnsOk = ${'$'}true }
+            |L "dns set to ${'$'}(${'$'}params.dnsFake) ${'$'}(if (${'$'}dnsOk) { 'OK' } else { 'FAILED: ' + (${'$'}check -join ',') })"
             |Add-TunRoutes ${'$'}ifIndex
             |L "routes present: $(Test-TunRoutes)"
             |${'$'}gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Where-Object { ${'$'}_.InterfaceAlias -ne ${'$'}params.tunName -and ${'$'}_.NextHop -ne '0.0.0.0' } | Sort-Object RouteMetric | Select-Object -First 1).NextHop
@@ -216,7 +227,14 @@ object TunHelper {
             |    if (${'$'}AppPid -gt 0) { ${'$'}appDead = -not (Get-Process -Id ${'$'}AppPid -ErrorAction SilentlyContinue) }
             |    ${'$'}hevDead = -not (Get-Process -Id ${'$'}hev.Id -ErrorAction SilentlyContinue)
             |    if (${'$'}appDead -or ${'$'}hevDead -or (Test-Path ${'$'}stopFile)) { break }
+            |    if (-not (Test-TunRoutes)) {
+            |        L "routes missing - re-adding"
+            |        ${'$'}line = netsh interface ipv4 show interfaces | Select-String ${'$'}params.tunName
+            |        if (${'$'}line) { ${'$'}toks = ${'$'}line.ToString().Trim() -split '\s+'; if (${'$'}toks.Count -ge 2) { Add-TunRoutes ${'$'}toks[0] } }
+            |    }
             |}
+            |# پاک‌سازی روت‌ها و برداشتن محدودیت IPv6 پس از قطع اتصال
+            |try { Remove-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -ErrorAction SilentlyContinue | Out-Null } catch {}
             |route delete 0.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
             |route delete 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
             |foreach (${'$'}ip in ${'$'}params.endpointIps) {
