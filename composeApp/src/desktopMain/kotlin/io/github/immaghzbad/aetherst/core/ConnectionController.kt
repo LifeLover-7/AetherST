@@ -127,7 +127,6 @@ actual object ConnectionController {
             val coreSocksPort = effectiveConfig.socksPort.toIntOrNull() ?: 1819
             val httpPort = effectiveConfig.httpPort.toIntOrNull() ?: 1820
 
-            // ۱. گوش دادن به وضعیت هسته (بدون بازگرداندن وضعیت به STOPPED در شروع)
             statusJob?.cancel()
             statusJob = scope.launch {
                 runner.connectionStatus.collect { s ->
@@ -137,7 +136,7 @@ actual object ConnectionController {
                 }
             }
 
-            // ۲. استارت هسته اصلی (با فعال کردن پروکسی HTTP جهت اتصال سایفون)
+            // ۱. استارت هسته با باز بودن پورت HTTP برای سایفون
             runner.start(
                 config = effectiveConfig.copy(httpProxyEnabled = true),
                 bindAddress = "127.0.0.1:$coreSocksPort",
@@ -145,7 +144,7 @@ actual object ConnectionController {
                 inputProvider = { loginCodeChannel.receive() }
             )
 
-            // ۳. صبر تا زمانی که هسته وایرگارد یا مسک متصل و آماده شود (مشابه اندروید)
+            // ۲. انتظار برای آماده شدن هسته اصلی
             var coreReady = false
             for (i in 0..40) {
                 if (runner.connectionStatus.value == ConnectionStatus.RUNNING || probePort("127.0.0.1", coreSocksPort)) {
@@ -155,20 +154,18 @@ actual object ConnectionController {
                 delay(300.milliseconds)
             }
 
-            if (!coreReady) {
-                LogRepository.w("[Controller] Core not listening yet, continuing startup sequence")
-            }
-
-            // ۴. اگر سایفون فعال است، آن را از بستر HTTP هسته اصلی عبور بده (دقیقاً مثل اندروید)
+            // ۳. اگر سایفون روشن است، پورت Upstream دقیقاً پورت فعال HTTP باشد
             var effectiveTargetPort = coreSocksPort
             if (PsiphonController.isSupported(effectiveConfig)) {
                 _status.value = ConnectionStatus.VALIDATING
-                LogRepository.i("[Controller] Chaining Psiphon over HTTP proxy 127.0.0.1:$httpPort", "Psiphon")
+                val actualHttpPort = if (probePort("127.0.0.1", httpPort)) httpPort else (if (probePort("127.0.0.1", 1820)) 1820 else httpPort)
+                val upstreamUrl = "http://127.0.0.1:$actualHttpPort"
+                LogRepository.i("[Controller] Chaining Psiphon over HTTP proxy $upstreamUrl", "Psiphon")
                 
                 val psiphonStarted = PsiphonController.start(
                     context = context,
                     config = effectiveConfig,
-                    upstream = "http://127.0.0.1:$httpPort"
+                    upstream = upstreamUrl
                 )
 
                 if (psiphonStarted) {
@@ -185,14 +182,14 @@ actual object ConnectionController {
                         effectiveTargetPort = PsiphonController.getPort()
                         LogRepository.i("[Controller] Psiphon Chain ready! Port: $effectiveTargetPort", "Psiphon")
                     } else {
-                        LogRepository.w("[Controller] Psiphon wait timed out, falling back to direct port $coreSocksPort", "Psiphon")
+                        LogRepository.w("[Controller] Psiphon timed out, falling back to core port $coreSocksPort", "Psiphon")
                     }
                 }
             }
 
             activeTargetPort = effectiveTargetPort
 
-            // ۵. راه‌اندازی پراکسی‌های داخلی و روتینگ
+            // ۴. راه‌اندازی پل پراکسی محلی
             routingEngine = RoutingEngine(effectiveConfig.routingRules)
             socksProxy = LocalSocksProxyServer(
                 listenHost = "127.0.0.1",
@@ -210,7 +207,7 @@ actual object ConnectionController {
                 routingEngine = routingEngine!!
             ).apply { start() }
 
-            // ۶. فعال‌سازی حالت مدنظر (TUNNEL یا SYSTEM PROXY)
+            // ۵. استارت حالت تونل با MTU امن
             if (effectiveConfig.connectionMode == ConnectionMode.TUNNEL) {
                 startTunnelMode(effectiveConfig, effectiveTargetPort)
             } else if (effectiveConfig.connectionMode == ConnectionMode.SYSTEM_PROXY) {
