@@ -10,7 +10,9 @@ import io.github.immaghzbad.aetherst.shared.data.PsiphonEgressRegistry
 import io.github.immaghzbad.aetherst.shared.model.AetherConfig
 import kotlinx.coroutines.*
 import java.io.File
+import java.net.InetSocketAddress
 import java.net.ServerSocket
+import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -25,21 +27,11 @@ object PsiphonController {
     private var monitorJob: Job? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    fun isSupported(config: AetherConfig): Boolean {
-        return config.psiphonEnabled
-    }
+    fun isSupported(config: AetherConfig): Boolean = config.psiphonEnabled
 
     fun getPort(): Int = psiphonPort
 
-    fun getUpstreamProxy(): String {
-        return "socks5://127.0.0.1:$psiphonPort"
-    }
-
-    private fun findFreePort(): Int {
-        return try {
-            ServerSocket(0).use { it.localPort }
-        } catch (_: Exception) { 3080 }
-    }
+    fun getUpstreamProxy(): String = "socks5://127.0.0.1:$psiphonPort"
 
     fun start(context: PlatformContext, config: AetherConfig, upstream: String? = null): Boolean {
         if (!isSupported(config)) return false
@@ -51,14 +43,14 @@ object PsiphonController {
             val psiphonDir = File(baseDir, "psiphon")
             if (!psiphonDir.exists()) psiphonDir.mkdirs()
 
-            val requested = config.psiphonSocksPort.toIntOrNull() ?: 3080
-            val port = if (requested.toString() == config.socksPort) findFreePort() else requested
+            val port = config.psiphonSocksPort.toIntOrNull() ?: 3080
             psiphonPort = port
 
             val binManager = getBinaryManager(context)
             val binaryPath = binManager.prepareBinary("psiphon-tunnel-core.exe")
 
-            copyServerEntriesIfAvailable(psiphonDir)
+            // کپی سرور انتری‌ها به پوشه داده‌های سایفون
+            copyServerEntries(psiphonDir)
 
             val configFile = File(psiphonDir, "psiphon.config")
             val configJson = buildPsiphonConfig(psiphonDir, port, config.psiphonEgressRegion, upstream)
@@ -79,8 +71,8 @@ object PsiphonController {
                 try {
                     proc.inputStream.bufferedReader().use { reader ->
                         while (isActive) {
-                            val l = reader.readLine() ?: break
-                            parsePsiphonOutput(context, l)
+                            val line = reader.readLine() ?: break
+                            parsePsiphonOutput(context, line)
                         }
                     }
                 } catch (_: Exception) {}
@@ -92,7 +84,7 @@ object PsiphonController {
             isStarting.set(false)
             running = false
             connected = false
-            LogRepository.e("Failed to start Psiphon on Windows: ${e.message}", "Psiphon")
+            LogRepository.e("Psiphon launch error: ${e.message}", "Psiphon")
             false
         }
     }
@@ -126,12 +118,6 @@ object PsiphonController {
                 LogRepository.i("Psiphon regions: ${regions.joinToString()}", "Psiphon")
             }
         }
-
-        if (lower.contains("error") || lower.contains("fatal")) {
-            LogRepository.w("[PsiphonCore] $line", "Psiphon")
-        } else {
-            LogRepository.d("[PsiphonCore] $line", "Psiphon")
-        }
     }
 
     private fun buildPsiphonConfig(dir: File, port: Int, egressRegion: String, upstream: String?): String {
@@ -159,16 +145,14 @@ object PsiphonController {
         """.trimIndent()
     }
 
-    private fun copyServerEntriesIfAvailable(psiphonDir: File) {
+    private fun copyServerEntries(psiphonDir: File) {
         val target = File(psiphonDir, "server_entries.txt")
         if (target.exists() && target.length() > 0) return
         try {
             val stream = javaClass.getResourceAsStream("/server_entries.txt")
                 ?: javaClass.getResourceAsStream("/bin/server_entries.txt")
                 ?: javaClass.classLoader.getResourceAsStream("server_entries.txt")
-            stream?.use { input ->
-                target.outputStream().use { output -> input.copyTo(output) }
-            }
+            stream?.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
         } catch (_: Exception) {}
     }
 
@@ -183,18 +167,12 @@ object PsiphonController {
             try {
                 process?.destroy()
                 process = null
-                val isWindows = System.getProperty("os.name").lowercase().contains("win")
-                if (isWindows) {
+                if (System.getProperty("os.name").lowercase().contains("win")) {
                     ProcessBuilder("taskkill", "/F", "/T", "/IM", "psiphon-tunnel-core.exe")
-                        .redirectErrorStream(true)
-                        .start()
+                        .redirectErrorStream(true).start()
                 }
             } catch (_: Exception) {}
-        }.apply {
-            isDaemon = true
-            name = "PsiphonKiller"
-            start()
-        }
+        }.apply { isDaemon = true; start() }
 
         LogRepository.i("Psiphon stopped", "Psiphon")
     }
@@ -205,4 +183,13 @@ object PsiphonController {
 
     fun stableFor(graceMs: Long): Boolean = connected && isRunning() &&
             (System.currentTimeMillis() - lastEventTime.get()) >= graceMs
+
+    suspend fun probeListening(): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            Socket().use {
+                it.connect(InetSocketAddress("127.0.0.1", psiphonPort), 1000)
+                true
+            }
+        }.getOrDefault(false)
+    }
 }
