@@ -239,16 +239,23 @@ object AetherTray {
             window.contentPane.add(content)
             window.pack()
             val size = window.size
-            var x = e.xOnScreen - size.width
-            var y = e.yOnScreen - size.height - 4
+
+            // محاسبه دقیق مختصات برای اینکه پنجره هرگز به زیر مانیتور یا بیرون کادر نیفتد
+            var targetX = e.xOnScreen - size.width
+            var targetY = e.yOnScreen - size.height - 8
+
             try {
                 val ge = GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds
-                if (x < ge.x) x = ge.x + 4
-                if (y < ge.y) y = ge.y + 4
-                if (x + size.width > ge.x + ge.width) x = ge.x + ge.width - size.width - 4
-                if (y + size.height > ge.y + ge.height) y = e.yOnScreen - size.height - 4
+                val minX = ge.x + 8
+                val maxX = ge.x + ge.width - size.width - 8
+                val minY = ge.y + 8
+                val maxY = ge.y + ge.height - size.height - 8
+
+                targetX = targetX.coerceIn(minX, maxX)
+                targetY = targetY.coerceIn(minY, maxY)
             } catch (_: Exception) {}
-            window.setLocation(x, y)
+
+            window.setLocation(targetX, targetY)
             window.isVisible = true
             window.addWindowFocusListener(object : java.awt.event.WindowFocusListener {
                 override fun windowGainedFocus(we: java.awt.event.WindowEvent) {}
