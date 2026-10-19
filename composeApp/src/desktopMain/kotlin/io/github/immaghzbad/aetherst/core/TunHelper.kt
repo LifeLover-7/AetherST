@@ -3,9 +3,6 @@ package io.github.immaghzbad.aetherst.shared.core
 import io.github.immaghzbad.aetherst.shared.data.LogRepository
 import io.github.immaghzbad.aetherst.platform.getSystemUtils
 import io.github.immaghzbad.aetherst.platform.PlatformContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -13,7 +10,7 @@ object TunHelper {
 
     const val TUN_NAME = "AetherST"
     const val TUN_IPV4 = "198.18.0.1"
-    const val TUN_MTU = 1280
+    const val DEFAULT_TUN_MTU = 1280
     const val DNS_FAKE = "198.18.0.2"
     const val SOCKS_LISTEN_PORT = 10808
 
@@ -26,30 +23,26 @@ object TunHelper {
 
     private val isRunning = AtomicBoolean(false)
     private var tailThread: Thread? = null
-    @Volatile
-    private var targetSocksPort = 1819
-    @Volatile
-    private var currentMtu = TUN_MTU
+    @Volatile private var targetSocksPort = 1819
 
-    fun start(socksTargetPort: Int, mtu: Int = TUN_MTU) {
+    fun start(socksTargetPort: Int, configuredMtu: Int = DEFAULT_TUN_MTU) {
         if (isRunning.getAndSet(true)) return
         targetSocksPort = socksTargetPort
-        currentMtu = if (mtu > 0) mtu else TUN_MTU
+        
+        // MTU تونل وایرگارد و مسک نباید از 1360 بیشتر باشد تا پکت‌ها سیاهچاله نشوند
+        val safeMtu = if (configuredMtu in 1200..1360) configuredMtu else DEFAULT_TUN_MTU
 
         try {
             val context = PlatformContext()
             try {
                 getBinaryManager(context).prepareBinary("hev-socks5-tunnel.exe")
             } catch (_: Exception) {}
-            val hevCheck = File(File(getSystemUtils(context).getFilesDir()), "bin/hev-socks5-tunnel.exe")
-            if (!hevCheck.exists()) {
-                LogRepository.e("[Tun] hev binary still missing after prepare at ${hevCheck.absolutePath}")
-            }
+            
             val dataDir = getSystemUtils(context).getFilesDir()
             val dataDirFile = File(dataDir)
 
-            File(dataDir, HEV_YAML).writeText(buildHevConfig(socksTargetPort, currentMtu))
-            writeParams(socksTargetPort, dataDirFile)
+            File(dataDir, HEV_YAML).writeText(buildHevConfig(safeMtu))
+            writeParams(socksTargetPort, dataDirFile, safeMtu)
             File(dataDir, STOP_FLAG).delete()
             writeHelperScript(dataDirFile)
 
@@ -67,7 +60,7 @@ object TunHelper {
                 )
             }
             ProcessBuilder(*command).redirectErrorStream(true).start()
-            LogRepository.i("[Tun] Helper started (elevated=${Elevation.isElevated()}), pid=$appPid")
+            LogRepository.i("[Tun] Helper started mtu=$safeMtu (elevated=${Elevation.isElevated()}), pid=$appPid")
 
             startTailing(dataDirFile)
         } catch (e: Exception) {
@@ -82,34 +75,23 @@ object TunHelper {
             val context = PlatformContext()
             val dataDir = getSystemUtils(context).getFilesDir()
             File(dataDir, STOP_FLAG).writeText("stop")
-            LogRepository.i("[Tun] Stop flag written; helper will clean up routes and core")
-        } catch (_: Exception) {
-        }
-        forceKillHevAsync()
-    }
+            LogRepository.i("[Tun] Stop flag written; helper cleaning up")
+        } catch (_: Exception) {}
 
-    private fun forceKillHevAsync() {
-        // اجرا در ترد پس‌زمینه بدون مسدود کردن ترد گرافیکی
+        // بستن پروسه به صورت کاملاً غیرمسدودکننده در پس‌زمینه
         Thread {
             try {
-                val isWindows = System.getProperty("os.name").lowercase().contains("win")
-                if (isWindows) {
-                    val proc = ProcessBuilder("taskkill", "/F", "/T", "/IM", "hev-socks5-tunnel.exe")
-                        .redirectErrorStream(true)
-                        .start()
-                    proc.waitFor()
+                if (System.getProperty("os.name").lowercase().contains("win")) {
+                    ProcessBuilder("taskkill", "/F", "/T", "/IM", "hev-socks5-tunnel.exe")
+                        .redirectErrorStream(true).start()
                 }
             } catch (_: Exception) {}
-        }.apply {
-            isDaemon = true
-            name = "HevKiller"
-            start()
-        }
+        }.apply { isDaemon = true; start() }
     }
 
     fun isActive(): Boolean = isRunning.get()
 
-    private fun buildHevConfig(socksTargetPort: Int, mtu: Int): String {
+    private fun buildHevConfig(mtu: Int): String {
         val logFile = runCatching {
             val context = PlatformContext()
             val dataDir = getSystemUtils(context).getFilesDir()
@@ -138,10 +120,10 @@ object TunHelper {
             |""".trimMargin()
     }
 
-    private fun writeParams(socksTargetPort: Int, dataDir: File) {
+    private fun writeParams(socksTargetPort: Int, dataDir: File, mtu: Int) {
         val endpointIps = collectEndpointIps().joinToString(",") { "\"$it\"" }
         val json = """
-            {"tunName":"$TUN_NAME","tunIp":"$TUN_IPV4","dnsFake":"$DNS_FAKE","socksPort":$SOCKS_LISTEN_PORT,"targetSocksPort":$socksTargetPort,"endpointIps":[$endpointIps]}
+            {"tunName":"$TUN_NAME","tunIp":"$TUN_IPV4","dnsFake":"$DNS_FAKE","socksPort":$SOCKS_LISTEN_PORT,"targetSocksPort":$socksTargetPort,"mtu":$mtu,"endpointIps":[$endpointIps]}
         """.trimIndent()
         File(dataDir, PARAMS_FILE).writeText(json)
     }
@@ -219,10 +201,6 @@ object TunHelper {
             |L "adapter found index ${'$'}ifIndex"
             |try { Set-NetIPInterface -InterfaceIndex ${'$'}ifIndex -InterfaceMetric 1 -ErrorAction SilentlyContinue | Out-Null } catch {}
             |try { Set-DnsClientServerAddress -InterfaceIndex ${'$'}ifIndex -ServerAddresses ${'$'}params.dnsFake -ErrorAction Stop | Out-Null } catch { netsh interface ipv4 set dnsservers name="$(${'$'}params.tunName)" static ${'$'}params.dnsFake primary 2>&1 | Out-Null }
-            |${'$'}check = (Get-DnsClientServerAddress -InterfaceIndex ${'$'}ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
-            |${'$'}dnsOk = ${'$'}false
-            |if (${'$'}check -contains ${'$'}params.dnsFake) { ${'$'}dnsOk = ${'$'}true }
-            |L "dns set to ${'$'}(${'$'}params.dnsFake) ${'$'}(if (${'$'}dnsOk) { 'OK' } else { 'FAILED: ' + (${'$'}check -join ',') })"
             |Add-TunRoutes ${'$'}ifIndex
             |L "routes present: $(Test-TunRoutes)"
             |${'$'}gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Where-Object { ${'$'}_.InterfaceAlias -ne ${'$'}params.tunName -and ${'$'}_.NextHop -ne '0.0.0.0' } | Sort-Object RouteMetric | Select-Object -First 1).NextHop
@@ -238,17 +216,9 @@ object TunHelper {
             |    if (${'$'}AppPid -gt 0) { ${'$'}appDead = -not (Get-Process -Id ${'$'}AppPid -ErrorAction SilentlyContinue) }
             |    ${'$'}hevDead = -not (Get-Process -Id ${'$'}hev.Id -ErrorAction SilentlyContinue)
             |    if (${'$'}appDead -or ${'$'}hevDead -or (Test-Path ${'$'}stopFile)) { break }
-            |    if (-not (Test-TunRoutes)) {
-            |        L "routes missing - re-adding"
-            |        ${'$'}line = netsh interface ipv4 show interfaces | Select-String ${'$'}params.tunName
-            |        if (${'$'}line) { ${'$'}toks = ${'$'}line.ToString().Trim() -split '\s+'; if (${'$'}toks.Count -ge 2) { Add-TunRoutes ${'$'}toks[0] } }
-            |    }
             |}
-            |L "monitor exit condition met (appDead=${'$'}appDead hevDead=${'$'}hevDead)"
             |route delete 0.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
             |route delete 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
-            |route delete 0.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp 2>&1 | Out-Null
-            |route delete 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp 2>&1 | Out-Null
             |foreach (${'$'}ip in ${'$'}params.endpointIps) {
             |    if (${'$'}ip -and ${'$'}gw) { route delete ${'$'}ip mask 255.255.255.255 ${'$'}gw 2>&1 | Out-Null }
             |}
@@ -263,15 +233,9 @@ object TunHelper {
     private fun startTailing(dataDir: File) {
         tailThread = Thread {
             val helperFile = File(dataDir, HELPER_LOG)
-            val hevOutFile = File(dataDir, HEV_OUT)
             var helperOffset = 0L
-            var hevOffset = 0L
-            var refreshCount = 0
             while (isRunning.get()) {
                 try {
-                    if (refreshCount++ % 5 == 0) {
-                        writeParams(targetSocksPort, dataDir)
-                    }
                     if (helperFile.exists()) {
                         val len = helperFile.length()
                         if (len > helperOffset) {
@@ -286,22 +250,7 @@ object TunHelper {
                             }
                         }
                     }
-                    if (hevOutFile.exists()) {
-                        val len = hevOutFile.length()
-                        if (len > hevOffset) {
-                            java.io.RandomAccessFile(hevOutFile, "r").use { raf ->
-                                raf.seek(hevOffset)
-                                val bytes = ByteArray((len - hevOffset).toInt())
-                                raf.readFully(bytes)
-                                hevOffset = len
-                                String(bytes).lineSequence().filter { it.isNotBlank() }.forEach {
-                                    LogRepository.i("[Hev] $it")
-                                }
-                            }
-                        }
-                    }
-                } catch (_: Exception) {
-                }
+                } catch (_: Exception) {}
                 Thread.sleep(1000)
             }
         }
