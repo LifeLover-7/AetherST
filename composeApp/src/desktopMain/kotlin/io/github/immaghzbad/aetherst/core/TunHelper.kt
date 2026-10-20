@@ -12,7 +12,6 @@ object TunHelper {
     const val TUN_IPV4 = "198.18.0.1"
     const val DEFAULT_TUN_MTU = 1280
     const val DNS_FAKE = "198.18.0.2"
-    const val SOCKS_LISTEN_PORT = 10808
 
     private const val STOP_FLAG = "tun-stop.flag"
     private const val PARAMS_FILE = "tun-params.json"
@@ -40,7 +39,8 @@ object TunHelper {
             val dataDir = getSystemUtils(context).getFilesDir()
             val dataDirFile = File(dataDir)
 
-            File(dataDir, HEV_YAML).writeText(buildHevConfig(safeMtu))
+            // اتصال مستقیم Wintun به پورت مستقیم هدف (سایفون 3080 یا Aether)
+            File(dataDir, HEV_YAML).writeText(buildHevConfig(socksTargetPort, safeMtu))
             writeParams(socksTargetPort, dataDirFile, safeMtu)
             File(dataDir, STOP_FLAG).delete()
             writeHelperScript(dataDirFile)
@@ -59,7 +59,7 @@ object TunHelper {
                 )
             }
             ProcessBuilder(*command).redirectErrorStream(true).start()
-            LogRepository.i("[Tun] Helper started mtu=$safeMtu (elevated=${Elevation.isElevated()}), pid=$appPid")
+            LogRepository.i("[Tun] Direct helper started pointing to $socksTargetPort (mtu=$safeMtu), pid=$appPid")
 
             startTailing(dataDirFile)
         } catch (e: Exception) {
@@ -89,7 +89,7 @@ object TunHelper {
 
     fun isActive(): Boolean = isRunning.get()
 
-    private fun buildHevConfig(mtu: Int): String {
+    private fun buildHevConfig(targetPort: Int, mtu: Int): String {
         val logFile = runCatching {
             val context = PlatformContext()
             val dataDir = getSystemUtils(context).getFilesDir()
@@ -102,7 +102,7 @@ object TunHelper {
             |  ipv4: $TUN_IPV4
             |socks5:
             |  address: 127.0.0.1
-            |  port: $SOCKS_LISTEN_PORT
+            |  port: $targetPort
             |  udp: udp
             |mapdns:
             |  address: $DNS_FAKE
@@ -121,7 +121,7 @@ object TunHelper {
     private fun writeParams(socksTargetPort: Int, dataDir: File, mtu: Int) {
         val endpointIps = collectEndpointIps().joinToString(",") { "\"$it\"" }
         val json = """
-            {"tunName":"$TUN_NAME","tunIp":"$TUN_IPV4","dnsFake":"$DNS_FAKE","socksPort":$SOCKS_LISTEN_PORT,"targetSocksPort":$socksTargetPort,"mtu":$mtu,"endpointIps":[$endpointIps]}
+            {"tunName":"$TUN_NAME","tunIp":"$TUN_IPV4","dnsFake":"$DNS_FAKE","socksPort":$socksTargetPort,"targetSocksPort":$socksTargetPort,"mtu":$mtu,"endpointIps":[$endpointIps]}
         """.trimIndent()
         File(dataDir, PARAMS_FILE).writeText(json)
     }
@@ -167,12 +167,10 @@ object TunHelper {
             |    ${'$'}r2 = route add 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1
             |    L "route add: ${'$'}r1"
             |    L "route add: ${'$'}r2"
-            |    # مسدود کردن نشت IPv6
             |    try {
             |        New-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -Direction Outbound -Action Block -RemoteAddress '::/0' -ErrorAction SilentlyContinue | Out-Null
             |        L "IPv6 leak protection activated"
             |    } catch {}
-            |    # جلوگیری از نشت DNS به اپراتور ایران
             |    try {
             |        Get-NetAdapter | Where-Object { ${'$'}_.InterfaceIndex -ne ${'$'}ifIndex -and ${'$'}_.Status -eq 'Up' } | ForEach-Object {
             |            Set-DnsClientServerAddress -InterfaceIndex ${'$'}_.InterfaceIndex -ServerAddresses '1.1.1.1','1.0.0.1' -ErrorAction SilentlyContinue
@@ -235,7 +233,6 @@ object TunHelper {
             |        if (${'$'}line) { ${'$'}toks = ${'$'}line.ToString().Trim() -split '\s+'; if (${'$'}toks.Count -ge 2) { Add-TunRoutes ${'$'}toks[0] } }
             |    }
             |}
-            |# پاک‌سازی و ریست کردن دی‌ان‌اس و روت‌ها
             |try { Remove-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -ErrorAction SilentlyContinue | Out-Null } catch {}
             |try { Get-NetAdapter | Where-Object { ${'$'}_.Status -eq 'Up' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex ${'$'}_.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue } } catch {}
             |route delete 0.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
