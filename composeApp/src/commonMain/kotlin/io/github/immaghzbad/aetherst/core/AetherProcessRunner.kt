@@ -20,34 +20,6 @@ class AetherProcessRunner(private val context: PlatformContext) {
     private var goolOuterValidated = false
     private var lastBindAddress: String = "127.0.0.1:1819"
 
-    private suspend fun runCommand(vararg command: String): Int = withContext(Dispatchers.IO) {
-        LogRepository.d("Executing command: ${command.joinToString(" ")}")
-        try {
-            val pb = ProcessBuilder(*command)
-            pb.redirectErrorStream(true)
-            val proc = pb.start()
-            val output = StringBuilder()
-            proc.inputStream.bufferedReader().use { reader ->
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    output.append(line).append("\n")
-                }
-            }
-            val exitCode = proc.waitFor()
-            val finalOutput = output.toString().trim()
-            if (finalOutput.isNotEmpty()) {
-                LogRepository.i("Command '${command[0]}' output:\n$finalOutput")
-            }
-            if (exitCode != 0) {
-                LogRepository.w("Command '${command[0]}' failed with exit code $exitCode")
-            }
-            exitCode
-        } catch (e: Exception) {
-            LogRepository.e("Critical error executing ${command[0]}: ${e.message}")
-            -1
-        }
-    }
-
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.STOPPED)
     val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
 
@@ -101,13 +73,14 @@ class AetherProcessRunner(private val context: PlatformContext) {
     private suspend fun runBinary(config: AetherConfig, attemptId: Long, bindAddress: String, onCodeRequired: () -> Unit, inputProvider: suspend () -> String): Boolean = coroutineScope {
         val proc = PlatformProcess()
         try {
-            val binaryPath = getBinaryManager(context).prepareBinary()
+            val binaryPath = getBinaryManager(context).prepareBinary("aether")
             val command = mutableListOf(binaryPath, "--bind", bindAddress)
 
             val httpBindHost = bindAddress.substringBefore(':')
+            val actualHttpPort = config.httpPort.ifBlank { "1820" }
             if (config.httpProxyEnabled) {
                 command.add("--http-proxy")
-                command.add("$httpBindHost:${config.httpPort}")
+                command.add("$httpBindHost:$actualHttpPort")
             }
 
             val routingFile = writeRoutingFile(config)
@@ -220,8 +193,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
             }
             if (config.h2Mode) env["AETHER_MASQUE_HTTP2"] = "1"
             if (config.echEnabled) env["AETHER_ECH"] = "auto"
-            val httpPort = config.httpPort.toIntOrNull() ?: 1820
-            if (config.httpProxyEnabled) env["AETHER_HTTP_PROXY"] = "$httpBindHost:$httpPort"
+            if (config.httpProxyEnabled) env["AETHER_HTTP_PROXY"] = "$httpBindHost:$actualHttpPort"
             if (config.h2Fragment) {
                 env["AETHER_MASQUE_H2_FRAGMENT"] = "1"
                 env["AETHER_MASQUE_H2_FRAGMENT_SIZE"] = config.fragmentSize
@@ -278,7 +250,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
 
             LogRepository.d("Executing: ${command.joinToString(" ")}")
             if (!proc.start(command, systemUtils.getFilesDir(), env)) {
-                LogRepository.e("Failed to start process: $binaryPath. Check if file exists and is executable.")
+                LogRepository.e("Failed to start process: $binaryPath")
                 return@coroutineScope false
             }
             process = proc
@@ -319,10 +291,13 @@ class AetherProcessRunner(private val context: PlatformContext) {
             lower.contains(" warn ") || lower.contains("[warn]") -> LogRepository.w(line, "AetherCore")
             else -> LogRepository.i(line, "AetherCore")
         }
-        if (isZeroTrustCodePrompt(lower)) {
+
+        // فقط در صورتی که پروتکل حتماً زیروتراست باشد پنجره ورود باز شود
+        if (protocol == AetherProtocol.ZERO_TRUST && isZeroTrustCodePrompt(lower)) {
             onCodeRequired()
             return
         }
+
         when {
             lower.contains("scanning") -> {
                 goolOuterValidated = false
