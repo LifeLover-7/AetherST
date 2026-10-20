@@ -70,12 +70,8 @@ actual object ConnectionController {
         private var prevTx = 0L
         private var prevRx = 0L
 
-        @Volatile private var socksProxy: LocalSocksProxyServer? = null
-        @Volatile private var httpProxy: LocalHttpProxyServer? = null
-        @Volatile private var dnsServer: LocalDnsServer? = null
         @Volatile private var tunnelModeStarted = false
         @Volatile private var activeTargetPort = 1819
-        private var routingEngine: RoutingEngine? = null
         private var statusJob: Job? = null
 
         init {
@@ -124,8 +120,10 @@ actual object ConnectionController {
             baseTx = trafficProvider.getTxBytes()
             baseRx = trafficProvider.getRxBytes()
 
+            // خواندن پورت‌های دلخواه و داینامیک تنظیم‌شده توسط کاربر (مثل 2021)
             val coreSocksPort = effectiveConfig.socksPort.toIntOrNull() ?: 1819
-            val httpPort = effectiveConfig.httpPort.toIntOrNull() ?: 1820
+            val configuredHttpPort = effectiveConfig.httpPort.toIntOrNull() ?: 1820
+            val actualHttpPort = if (configuredHttpPort == coreSocksPort) coreSocksPort + 1 else configuredHttpPort
 
             statusJob?.cancel()
             statusJob = scope.launch {
@@ -136,15 +134,15 @@ actual object ConnectionController {
                 }
             }
 
-            // ۱. استارت هسته با باز بودن پورت HTTP برای سایفون
+            // ۱. استارت هسته اصلی Aether با پروکسی HTTP جهت آپ‌استریم سایفون
             runner.start(
-                config = effectiveConfig.copy(httpProxyEnabled = true),
+                config = effectiveConfig.copy(httpProxyEnabled = true, httpPort = actualHttpPort.toString()),
                 bindAddress = "127.0.0.1:$coreSocksPort",
                 onCodeRequired = { _isWaitingForCode.value = true },
                 inputProvider = { loginCodeChannel.receive() }
             )
 
-            // ۲. انتظار برای آماده شدن هسته اصلی
+            // ۲. انتظار برای اعتبارسنجی هسته
             var coreReady = false
             for (i in 0..40) {
                 if (runner.connectionStatus.value == ConnectionStatus.RUNNING || probePort("127.0.0.1", coreSocksPort)) {
@@ -154,11 +152,10 @@ actual object ConnectionController {
                 delay(300.milliseconds)
             }
 
-            // ۳. اگر سایفون روشن است، پورت Upstream دقیقاً پورت فعال HTTP باشد
+            // ۳. اتصال سایفون به پورت HTTP فعال هسته Aether
             var effectiveTargetPort = coreSocksPort
             if (PsiphonController.isSupported(effectiveConfig)) {
                 _status.value = ConnectionStatus.VALIDATING
-                val actualHttpPort = if (probePort("127.0.0.1", httpPort)) httpPort else (if (probePort("127.0.0.1", 1820)) 1820 else httpPort)
                 val upstreamUrl = "http://127.0.0.1:$actualHttpPort"
                 LogRepository.i("[Controller] Chaining Psiphon over HTTP proxy $upstreamUrl", "Psiphon")
                 
@@ -182,38 +179,21 @@ actual object ConnectionController {
                         effectiveTargetPort = PsiphonController.getPort()
                         LogRepository.i("[Controller] Psiphon Chain ready! Port: $effectiveTargetPort", "Psiphon")
                     } else {
-                        LogRepository.w("[Controller] Psiphon timed out, falling back to core port $coreSocksPort", "Psiphon")
+                        LogRepository.w("[Controller] Psiphon wait timed out, falling back to core port $coreSocksPort", "Psiphon")
                     }
                 }
             }
 
             activeTargetPort = effectiveTargetPort
 
-            // ۴. راه‌اندازی پل پراکسی محلی
-            routingEngine = RoutingEngine(effectiveConfig.routingRules)
-            socksProxy = LocalSocksProxyServer(
-                listenHost = "127.0.0.1",
-                listenPort = 10808,
-                targetHost = "127.0.0.1",
-                targetPort = effectiveTargetPort,
-                routingEngine = routingEngine!!
-            ).apply { start() }
-
-            httpProxy = LocalHttpProxyServer(
-                listenHost = "127.0.0.1",
-                listenPort = 10809,
-                targetHost = "127.0.0.1",
-                targetPort = effectiveTargetPort,
-                routingEngine = routingEngine!!
-            ).apply { start() }
-
-            // ۵. استارت حالت تونل با MTU امن
+            // ۴. اتصال مستقیم تونل Wintun به پورت هدف بدون دست‌اندازِ واسطه
             if (effectiveConfig.connectionMode == ConnectionMode.TUNNEL) {
                 startTunnelMode(effectiveConfig, effectiveTargetPort)
             } else if (effectiveConfig.connectionMode == ConnectionMode.SYSTEM_PROXY) {
-                getSystemUtils(context).setSystemProxy("127.0.0.1", 10809)
+                getSystemUtils(context).setSystemProxy("127.0.0.1", effectiveTargetPort)
             }
 
+            delay(1200.milliseconds)
             _status.value = ConnectionStatus.RUNNING
             startTimer()
         }
@@ -222,7 +202,7 @@ actual object ConnectionController {
             if (tunnelModeStarted) return
             tunnelModeStarted = true
             TunHelper.start(targetPort, config.mtu)
-            LogRepository.i("[Controller] TUN helper started pointing to $targetPort")
+            LogRepository.i("[Controller] TUN helper directly connected to port $targetPort")
         }
 
         fun stop() {
@@ -246,15 +226,8 @@ actual object ConnectionController {
             try { CloakController.stop() } catch (_: Throwable) {}
 
             try { getSystemUtils(context).clearSystemProxy() } catch (_: Throwable) {}
-            dnsServer?.stop()
-            dnsServer = null
-            socksProxy?.stop()
-            socksProxy = null
-            httpProxy?.stop()
-            httpProxy = null
             tunnelModeStarted = false
             TunHelper.stop()
-            routingEngine = null
         }
 
         private suspend fun probePort(host: String, port: Int): Boolean = withContext(Dispatchers.IO) {
@@ -289,23 +262,6 @@ actual object ConnectionController {
         }
 
         private fun updateTraffic() {
-            val socksStats = socksProxy?.getStats()
-            val httpStats = httpProxy?.getStats()
-            if (socksStats != null || httpStats != null) {
-                val totalTx = (socksStats?.txBytes ?: 0L) + (httpStats?.txBytes ?: 0L)
-                val totalRx = (socksStats?.rxBytes ?: 0L) + (httpStats?.rxBytes ?: 0L)
-                val uploadSpeed = (totalTx - prevTx).coerceAtLeast(0L).toDouble()
-                val downloadSpeed = (totalRx - prevRx).coerceAtLeast(0L).toDouble()
-                prevTx = totalTx
-                prevRx = totalRx
-                _sessionTraffic.value = SessionTraffic(
-                    uploadedBytes = totalTx,
-                    downloadedBytes = totalRx,
-                    uploadSpeedBps = uploadSpeed,
-                    downloadSpeedBps = downloadSpeed
-                )
-                return
-            }
             val currentTx = trafficProvider.getTxBytes()
             val currentRx = trafficProvider.getRxBytes()
             val totalTx = (currentTx - baseTx).coerceAtLeast(0L)
