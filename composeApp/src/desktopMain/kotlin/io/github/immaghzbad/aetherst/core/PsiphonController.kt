@@ -11,7 +11,6 @@ import io.github.immaghzbad.aetherst.shared.model.AetherConfig
 import kotlinx.coroutines.*
 import java.io.File
 import java.net.InetSocketAddress
-import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
@@ -49,16 +48,25 @@ object PsiphonController {
             val binManager = getBinaryManager(context)
             val binaryPath = binManager.prepareBinary("psiphon-tunnel-core.exe")
 
-            // کپی سرور انتری‌ها به پوشه داده‌های سایفون
+            // اطمینان از وجود فایل سرورها
+            val serverListFile = File(psiphonDir, "server_entries.txt")
             copyServerEntries(psiphonDir)
 
             val configFile = File(psiphonDir, "psiphon.config")
             val configJson = buildPsiphonConfig(psiphonDir, port, config.psiphonEgressRegion, upstream)
             configFile.writeText(configJson)
 
-            LogRepository.i("Launching Psiphon core on port $port (upstream=${upstream ?: "direct"})...", "Psiphon")
+            LogRepository.i("Launching Psiphon core on port $port with serverList...", "Psiphon")
 
-            val pb = ProcessBuilder(binaryPath, "-config", configFile.absolutePath)
+            // پاس دادن قطعی سرورها با پارامتر -serverList
+            val command = mutableListOf(binaryPath, "-config", configFile.absolutePath)
+            if (serverListFile.exists() && serverListFile.length() > 0) {
+                command.add("-serverList")
+                command.add(serverListFile.absolutePath)
+            }
+
+            val logFile = File(psiphonDir, "psiphon.log")
+            val pb = ProcessBuilder(command)
             pb.directory(psiphonDir)
             pb.redirectErrorStream(true)
 
@@ -66,12 +74,14 @@ object PsiphonController {
             process = proc
             running = true
 
+            // خواندن هم‌زمان خروجی سایفون و ذخیره در psiphon.log
             monitorJob?.cancel()
             monitorJob = scope.launch {
                 try {
                     proc.inputStream.bufferedReader().use { reader ->
                         while (isActive) {
                             val line = reader.readLine() ?: break
+                            logFile.appendText(line + "\n")
                             parsePsiphonOutput(context, line)
                         }
                     }
@@ -147,11 +157,12 @@ object PsiphonController {
 
     private fun copyServerEntries(psiphonDir: File) {
         val target = File(psiphonDir, "server_entries.txt")
-        if (target.exists() && target.length() > 0) return
+        if (target.exists() && target.length() > 10) return
         try {
             val stream = javaClass.getResourceAsStream("/server_entries.txt")
                 ?: javaClass.getResourceAsStream("/bin/server_entries.txt")
                 ?: javaClass.classLoader.getResourceAsStream("server_entries.txt")
+                ?: javaClass.classLoader.getResourceAsStream("bin/server_entries.txt")
             stream?.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
         } catch (_: Exception) {}
     }
