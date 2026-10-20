@@ -29,7 +29,6 @@ object TunHelper {
         if (isRunning.getAndSet(true)) return
         targetSocksPort = socksTargetPort
         
-        // اطمینان از اینکه MTU در بازه مجاز کپسوله‌سازی وایرگارد باشد
         val safeMtu = if (configuredMtu in 1200..1360) configuredMtu else DEFAULT_TUN_MTU
 
         try {
@@ -168,10 +167,17 @@ object TunHelper {
             |    ${'$'}r2 = route add 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1
             |    L "route add: ${'$'}r1"
             |    L "route add: ${'$'}r2"
-            |    # مسدود کردن نشت ترافیک IPv6 به اینترنت فیلترشده تا سایت‌های Dual-Stack ناقص لود نشوند
+            |    # مسدود کردن نشت IPv6
             |    try {
             |        New-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -Direction Outbound -Action Block -RemoteAddress '::/0' -ErrorAction SilentlyContinue | Out-Null
             |        L "IPv6 leak protection activated"
+            |    } catch {}
+            |    # جلوگیری از نشت DNS به اپراتور ایران
+            |    try {
+            |        Get-NetAdapter | Where-Object { ${'$'}_.InterfaceIndex -ne ${'$'}ifIndex -and ${'$'}_.Status -eq 'Up' } | ForEach-Object {
+            |            Set-DnsClientServerAddress -InterfaceIndex ${'$'}_.InterfaceIndex -ServerAddresses '1.1.1.1','1.0.0.1' -ErrorAction SilentlyContinue
+            |        }
+            |        L "DNS leak protection applied to physical adapters"
             |    } catch {}
             |}
             |function Test-TunRoutes {
@@ -208,10 +214,6 @@ object TunHelper {
             |L "adapter found index ${'$'}ifIndex"
             |try { Set-NetIPInterface -InterfaceIndex ${'$'}ifIndex -InterfaceMetric 1 -NlMtu ${'$'}params.mtu -ErrorAction SilentlyContinue | Out-Null } catch {}
             |try { Set-DnsClientServerAddress -InterfaceIndex ${'$'}ifIndex -ServerAddresses ${'$'}params.dnsFake -ErrorAction Stop | Out-Null } catch { netsh interface ipv4 set dnsservers name="$(${'$'}params.tunName)" static ${'$'}params.dnsFake primary 2>&1 | Out-Null }
-            |${'$'}check = (Get-DnsClientServerAddress -InterfaceIndex ${'$'}ifIndex -AddressFamily IPv4 -ErrorAction SilentlyContinue).ServerAddresses
-            |${'$'}dnsOk = ${'$'}false
-            |if (${'$'}check -contains ${'$'}params.dnsFake) { ${'$'}dnsOk = ${'$'}true }
-            |L "dns set to ${'$'}(${'$'}params.dnsFake) ${'$'}(if (${'$'}dnsOk) { 'OK' } else { 'FAILED: ' + (${'$'}check -join ',') })"
             |Add-TunRoutes ${'$'}ifIndex
             |L "routes present: $(Test-TunRoutes)"
             |${'$'}gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Where-Object { ${'$'}_.InterfaceAlias -ne ${'$'}params.tunName -and ${'$'}_.NextHop -ne '0.0.0.0' } | Sort-Object RouteMetric | Select-Object -First 1).NextHop
@@ -233,8 +235,9 @@ object TunHelper {
             |        if (${'$'}line) { ${'$'}toks = ${'$'}line.ToString().Trim() -split '\s+'; if (${'$'}toks.Count -ge 2) { Add-TunRoutes ${'$'}toks[0] } }
             |    }
             |}
-            |# پاک‌سازی روت‌ها و برداشتن محدودیت IPv6 پس از قطع اتصال
+            |# پاک‌سازی و ریست کردن دی‌ان‌اس و روت‌ها
             |try { Remove-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -ErrorAction SilentlyContinue | Out-Null } catch {}
+            |try { Get-NetAdapter | Where-Object { ${'$'}_.Status -eq 'Up' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex ${'$'}_.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue } } catch {}
             |route delete 0.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
             |route delete 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
             |foreach (${'$'}ip in ${'$'}params.endpointIps) {
