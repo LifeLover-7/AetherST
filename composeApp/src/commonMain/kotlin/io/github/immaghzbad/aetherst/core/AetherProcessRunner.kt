@@ -292,7 +292,6 @@ class AetherProcessRunner(private val context: PlatformContext) {
             else -> LogRepository.i(line, "AetherCore")
         }
 
-        // فقط در صورتی که پروتکل حتماً زیروتراست باشد پنجره ورود باز شود
         if (protocol == AetherProtocol.ZERO_TRUST && isZeroTrustCodePrompt(lower)) {
             onCodeRequired()
             return
@@ -334,17 +333,31 @@ class AetherProcessRunner(private val context: PlatformContext) {
         if (currentAttemptId.get() == attemptId) _connectionStatus.value = state
     }
 
+    // تولید فایل روتینگ با پشتیبانی کامل از هر دو حالت [block] و [direct] (اسپلیت تونل)
     private fun writeRoutingFile(config: AetherConfig): java.io.File? {
         val block = config.routingRules.filter { it.mode == RoutingMode.BLOCK }
-        if (block.isEmpty()) return null
+        val direct = config.routingRules.filter { it.mode == RoutingMode.DIRECT }
+
+        if (block.isEmpty() && direct.isEmpty()) return null
 
         return try {
             val file = java.io.File(systemUtils.getFilesDir(), "routing.ast")
             val content = StringBuilder()
-            content.append("[block]\n")
-            block.forEach { content.append(formatRoutingPattern(it.pattern)).append("\n") }
-            content.append("\n")
+
+            if (block.isNotEmpty()) {
+                content.append("[block]\n")
+                block.forEach { content.append(formatRoutingPattern(it.pattern)).append("\n") }
+                content.append("\n")
+            }
+
+            if (direct.isNotEmpty()) {
+                content.append("[direct]\n")
+                direct.forEach { content.append(formatRoutingPattern(it.pattern)).append("\n") }
+                content.append("\n")
+            }
+
             file.writeText(content.toString())
+            LogRepository.i("Routing file generated with ${block.size} blocked and ${direct.size} direct rules.")
             file
         } catch (e: Exception) {
             LogRepository.e("Failed to write routing file: ${e.message}")
