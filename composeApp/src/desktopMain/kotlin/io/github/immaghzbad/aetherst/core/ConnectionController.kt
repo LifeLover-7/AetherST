@@ -1,6 +1,7 @@
 package io.github.immaghzbad.aetherst.shared.core
 
 import io.github.immaghzbad.aetherst.shared.data.AetherConfigRepository
+import io.github.immaghzbad.aetherst.shared.data.ActiveProxyProvider
 import io.github.immaghzbad.aetherst.shared.data.LogRepository
 import io.github.immaghzbad.aetherst.shared.model.*
 import io.github.immaghzbad.aetherst.core.CloakController
@@ -72,6 +73,7 @@ actual object ConnectionController {
 
         @Volatile private var tunnelModeStarted = false
         @Volatile private var activeTargetPort = 1819
+        @Volatile private var isPsiphonActive = false
         private var statusJob: Job? = null
 
         init {
@@ -117,10 +119,10 @@ actual object ConnectionController {
                 }
             }
 
+            // ثبت بایت‌های اولیه قبل از اتصال
             baseTx = trafficProvider.getTxBytes()
             baseRx = trafficProvider.getRxBytes()
 
-            // خواندن پورت‌های دلخواه و داینامیک تنظیم‌شده توسط کاربر (مثل 2021)
             val coreSocksPort = effectiveConfig.socksPort.toIntOrNull() ?: 1819
             val configuredHttpPort = effectiveConfig.httpPort.toIntOrNull() ?: 1820
             val actualHttpPort = if (configuredHttpPort == coreSocksPort) coreSocksPort + 1 else configuredHttpPort
@@ -134,7 +136,7 @@ actual object ConnectionController {
                 }
             }
 
-            // ۱. استارت هسته اصلی Aether با پروکسی HTTP جهت آپ‌استریم سایفون
+            // ۱. استارت هسته اصلی Aether با پروکسی HTTP جهت اتصال سایفون
             runner.start(
                 config = effectiveConfig.copy(httpProxyEnabled = true, httpPort = actualHttpPort.toString()),
                 bindAddress = "127.0.0.1:$coreSocksPort",
@@ -142,7 +144,7 @@ actual object ConnectionController {
                 inputProvider = { loginCodeChannel.receive() }
             )
 
-            // ۲. انتظار برای اعتبارسنجی هسته
+            // ۲. انتظار برای آماده شدن هسته
             var coreReady = false
             for (i in 0..40) {
                 if (runner.connectionStatus.value == ConnectionStatus.RUNNING || probePort("127.0.0.1", coreSocksPort)) {
@@ -152,8 +154,9 @@ actual object ConnectionController {
                 delay(300.milliseconds)
             }
 
-            // ۳. اتصال سایفون به پورت HTTP فعال هسته Aether
+            // ۳. اتصال سایفون به پورت HTTP هسته
             var effectiveTargetPort = coreSocksPort
+            isPsiphonActive = false
             if (PsiphonController.isSupported(effectiveConfig)) {
                 _status.value = ConnectionStatus.VALIDATING
                 val upstreamUrl = "http://127.0.0.1:$actualHttpPort"
@@ -177,6 +180,9 @@ actual object ConnectionController {
 
                     if (psiphonReady) {
                         effectiveTargetPort = PsiphonController.getPort()
+                        isPsiphonActive = true
+                        // اعلام به سیستم استعلام آی‌پی که سایفون فعال است تا آی‌پی آمریکا را بگیرد
+                        ActiveProxyProvider.psiphonProxyUrl = PsiphonController.getUpstreamProxy()
                         LogRepository.i("[Controller] Psiphon Chain ready! Port: $effectiveTargetPort", "Psiphon")
                     } else {
                         LogRepository.w("[Controller] Psiphon wait timed out, falling back to core port $coreSocksPort", "Psiphon")
@@ -186,12 +192,16 @@ actual object ConnectionController {
 
             activeTargetPort = effectiveTargetPort
 
-            // ۴. اتصال مستقیم تونل Wintun به پورت هدف بدون دست‌اندازِ واسطه
+            // ۴. فعال‌سازی حالت تونل با هدایت به پورت مستقیم
             if (effectiveConfig.connectionMode == ConnectionMode.TUNNEL) {
                 startTunnelMode(effectiveConfig, effectiveTargetPort)
             } else if (effectiveConfig.connectionMode == ConnectionMode.SYSTEM_PROXY) {
                 getSystemUtils(context).setSystemProxy("127.0.0.1", effectiveTargetPort)
             }
+
+            // ریست مجدد بیس ترافیک بعد از اتمام دست‌دهی اولیه
+            baseTx = trafficProvider.getTxBytes()
+            baseRx = trafficProvider.getRxBytes()
 
             delay(1200.milliseconds)
             _status.value = ConnectionStatus.RUNNING
@@ -224,6 +234,9 @@ actual object ConnectionController {
             try { PsiphonController.stop() } catch (_: Throwable) {}
             runner.stop()
             try { CloakController.stop() } catch (_: Throwable) {}
+
+            ActiveProxyProvider.psiphonProxyUrl = null
+            isPsiphonActive = false
 
             try { getSystemUtils(context).clearSystemProxy() } catch (_: Throwable) {}
             tunnelModeStarted = false
@@ -264,12 +277,20 @@ actual object ConnectionController {
         private fun updateTraffic() {
             val currentTx = trafficProvider.getTxBytes()
             val currentRx = trafficProvider.getRxBytes()
-            val totalTx = (currentTx - baseTx).coerceAtLeast(0L)
-            val totalRx = (currentRx - baseRx).coerceAtLeast(0L)
+            
+            val rawDiffTx = (currentTx - baseTx).coerceAtLeast(0L)
+            val rawDiffRx = (currentRx - baseRx).coerceAtLeast(0L)
+
+            // در ویندوز ترافیک روی لوپ‌بک چندین بار شمرده می‌شود؛ نرمال‌سازی ضریب تکثیر لوپ‌بک
+            val divisor = if (isPsiphonActive) 3.0 else 2.0
+            val totalTx = (rawDiffTx / divisor).toLong().coerceAtLeast(0L)
+            val totalRx = (rawDiffRx / divisor).toLong().coerceAtLeast(0L)
+
             val uploadSpeed = (totalTx - prevTx).coerceAtLeast(0L).toDouble()
             val downloadSpeed = (totalRx - prevRx).coerceAtLeast(0L).toDouble()
             prevTx = totalTx
             prevRx = totalRx
+
             _sessionTraffic.value = SessionTraffic(
                 uploadedBytes = totalTx,
                 downloadedBytes = totalRx,
