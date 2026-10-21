@@ -76,7 +76,6 @@ actual object ConnectionController {
         @Volatile private var isPsiphonActive = false
         private var statusJob: Job? = null
 
-        // اندپوینت‌های اختصاصی دیتاسنتر استانبول (ترکیه) و فرانکفورت برای خروجی کم‌پینگ گیمینگ GOOL
         private val gamingEndpoints = listOf(
             "162.159.193.1:2408",
             "162.159.192.1:2408",
@@ -120,7 +119,6 @@ actual object ConnectionController {
             val config = AetherConfigRepository.getInstance(getSettings(context)).config.value.effectiveZeroTrustConfig()
             var effectiveConfig = config
 
-            // ۱. اگر پروتکل GOOL است و لایه دوم دستی وارد نشده، اتصال به سرورهای گیمینگ ترکیه
             if (effectiveConfig.protocol == AetherProtocol.GOOL && effectiveConfig.wiwInner.isBlank()) {
                 val gamingTarget = gamingEndpoints[0]
                 effectiveConfig = effectiveConfig.copy(wiwInner = gamingTarget)
@@ -151,7 +149,6 @@ actual object ConnectionController {
                 }
             }
 
-            // ۲. استارت هسته اصلی Aether
             runner.start(
                 config = effectiveConfig.copy(httpProxyEnabled = true, httpPort = actualHttpPort.toString()),
                 bindAddress = "127.0.0.1:$coreSocksPort",
@@ -159,7 +156,6 @@ actual object ConnectionController {
                 inputProvider = { loginCodeChannel.receive() }
             )
 
-            // ۳. انتظار برای بالا آمدن هسته
             var coreReady = false
             for (i in 0..40) {
                 if (runner.connectionStatus.value == ConnectionStatus.RUNNING || probePort("127.0.0.1", coreSocksPort)) {
@@ -169,7 +165,6 @@ actual object ConnectionController {
                 delay(300.milliseconds)
             }
 
-            // ۴. در صورت فعال بودن سایفون، اتصال لایه دوم به HTTP
             var effectiveTargetPort = coreSocksPort
             isPsiphonActive = false
             if (PsiphonController.isSupported(effectiveConfig)) {
@@ -206,7 +201,6 @@ actual object ConnectionController {
 
             activeTargetPort = effectiveTargetPort
 
-            // ۵. اتصال تونل Wintun مستقیم به پورت نهایی
             if (effectiveConfig.connectionMode == ConnectionMode.TUNNEL) {
                 startTunnelMode(effectiveConfig, effectiveTargetPort)
             } else if (effectiveConfig.connectionMode == ConnectionMode.SYSTEM_PROXY) {
@@ -291,7 +285,6 @@ actual object ConnectionController {
             val rawDiffTx = (currentTx - baseTx).coerceAtLeast(0L)
             val rawDiffRx = (currentRx - baseRx).coerceAtLeast(0L)
 
-            // نرمال‌سازی محاسبه حجم بر اساس ضریب لوپ‌بک
             val divisor = if (isPsiphonActive) 3.0 else 2.0
             val totalTx = (rawDiffTx / divisor).toLong().coerceAtLeast(0L)
             val totalRx = (rawDiffRx / divisor).toLong().coerceAtLeast(0L)
@@ -315,4 +308,3 @@ actual object ConnectionController {
         }
     }
 }
-```
