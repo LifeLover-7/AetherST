@@ -1,4 +1,5 @@
 package io.github.immaghzbad.aetherst.shared.ui.screens
+
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.immaghzbad.aetherst.shared.ui.theme.AppPalette
 import io.github.immaghzbad.aetherst.shared.ui.components.*
@@ -23,6 +24,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -57,10 +59,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Info
@@ -73,6 +73,7 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.VpnLock
 import androidx.compose.material3.Button
@@ -94,6 +95,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -111,13 +113,11 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.Dp
@@ -312,7 +312,7 @@ fun DashboardScreen(
                     scaleFactor = scaleFactor
                 )
 
-                // ردیف دکمه‌های میانبر اسپلیت تونل سایت‌ها
+                // ردیف میانبر اسپلیت تونل سایت‌ها
                 Card(
                     modifier = Modifier.fillMaxWidth().clickable { showBypassSheet = true },
                     shape = RoundedCornerShape(14.dp),
@@ -335,7 +335,7 @@ fun DashboardScreen(
                                 Text("اسپلیت تونل سایت‌ها (Bypass)", fontWeight = FontWeight.Bold, color = Color.White, fontSize = (12 * scaleFactor).sp)
                                 val directCount = config.routingRules.count { it.mode == RoutingMode.DIRECT }
                                 val hasIr = config.routingRules.any { it.mode == RoutingMode.DIRECT && it.pattern.contains(".ir") }
-                                val desc = if (hasIr) "سایت‌های ایرانی فعال + $directCount آدرس" else "$directCount سایت بدون فیلترشکن"
+                                val desc = if (hasIr) "سایت‌های ایرانی فعال + $directCount آدرس مستقیم" else "$directCount سایت بدون فیلترشکن"
                                 Text(desc, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp)
                             }
                         }
@@ -446,7 +446,7 @@ fun DashboardScreen(
                                         checked = config.torEnabled && torAllowed,
                                         onCheckedChange = { onToggleTor(it) },
                                         enabled = torAllowed && (connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR),
-                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = IosActiveGreen, checkedBorderColor = Color.Transparent, uncheckedThumbColor = Color.White, uncheckedTrackColor = AppPalette.inactiveTrack, uncheckedBorderColor = Color.Transparent, disabledCheckedTrackColor = IosActiveGreen.copy(alpha = 0.4f), disabledCheckedThumbColor = Color.White.copy(alpha = 0.9f), disabledCheckedBorderColor = Color.Transparent, disabledUncheckedTrackColor = AppPalette.inactiveTrack.copy(alpha = 0.6f), disabledUncheckedThumbColor = Color.White.copy(alpha = 0.7f), disabledUncheckedBorderColor = Color.Transparent)
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = IosActiveGreen, checkedBorderColor = Color.Transparent, uncheckedThumbColor = Color.White, uncheckedTrackColor = AppPalette.inactiveTrack, uncheckedBorderColor = Color.Transparent)
                                     )
                                 }
                                 if (torOn) {
@@ -489,14 +489,14 @@ fun DashboardScreen(
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(strings.PSIPHON_CHAIN, fontWeight = FontWeight.Bold, color = Color.White, fontSize = (13 * scaleFactor).sp)
-                                            Text(if (!psiphonAllowed) strings.PSIPHON_NOT_AVAILABLE_ZT else if (config.psiphonEnabled) when (config.protocol) { AetherProtocol.MASQUE -> strings.PSIPHON_OVER_MASQUE ; AetherProtocol.WG -> strings.PSIPHON_OVER_WG ; AetherProtocol.GOOL -> strings.PSIPHON_OVER_GOOL ; AetherProtocol.ZERO_TRUST -> strings.PSIPHON_ROUTE_VIA } else strings.PSIPHON_ROUTE_VIA, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp)
+                                            Text(if (!psiphonAllowed) strings.PSIPHON_NOT_AVAILABLE_ZT else strings.PSIPHON_ROUTE_VIA, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp)
                                         }
                                     }
                                     Switch(
                                         checked = config.psiphonEnabled && psiphonAllowed,
                                         onCheckedChange = { onTogglePsiphon(it) },
                                         enabled = psiphonAllowed && (connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR),
-                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = IosActiveGreen, checkedBorderColor = Color.Transparent, uncheckedThumbColor = Color.White, uncheckedTrackColor = AppPalette.inactiveTrack, uncheckedBorderColor = Color.Transparent, disabledCheckedTrackColor = IosActiveGreen.copy(alpha = 0.4f), disabledCheckedThumbColor = Color.White.copy(alpha = 0.9f), disabledCheckedBorderColor = Color.Transparent, disabledUncheckedTrackColor = AppPalette.inactiveTrack.copy(alpha = 0.6f), disabledUncheckedThumbColor = Color.White.copy(alpha = 0.7f), disabledUncheckedBorderColor = Color.Transparent)
+                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = IosActiveGreen, checkedBorderColor = Color.Transparent, uncheckedThumbColor = Color.White, uncheckedTrackColor = AppPalette.inactiveTrack, uncheckedBorderColor = Color.Transparent)
                                     )
                                 }
                                 if (psiphonOn) {
@@ -530,7 +530,14 @@ fun DashboardScreen(
                     }
                     IosProtocolSegmentedControl(
                         selectedProtocol = config.protocol,
-                        onProtocolSelected = onUpdateProtocol,
+                        onProtocolSelected = { proto ->
+                            if (proto == AetherProtocol.GOOL && config.wiwInner.isBlank()) {
+                                // خودکار سرور استانبول ترکیه یا فرانکفورت برای خروجی غیرایرانی و پینگ پایین
+                                onUpdateConfig(config.copy(protocol = proto, wiwInner = "162.159.193.1:2408"))
+                            } else {
+                                onUpdateProtocol(proto)
+                            }
+                        },
                         enabled = connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR,
                         allowedProtocols = if (config.isPsiphonActive() || config.isTorActive()) setOf(AetherProtocol.MASQUE, AetherProtocol.WG, AetherProtocol.GOOL) else null,
                         scaleFactor = scaleFactor
@@ -539,7 +546,7 @@ fun DashboardScreen(
             }
         }
 
-        // پاپ‌آپ بسیار ساده و کاربرپسند اسپلیت تونل سایت‌ها
+        // پاپ‌آپ اسپلیت تونل سایت‌ها
         if (showBypassSheet) {
             WebsiteBypassDialog(
                 config = config,
@@ -595,9 +602,6 @@ fun DashboardScreen(
     }
 }
 
-/**
- * کامپوننت پاپ‌آپ اسپلیت تونل سایت‌ها (ورود ساده آدرس سایت + دور زدن خودکار تمام سایت‌های ایرانی)
- */
 @Composable
 fun WebsiteBypassDialog(
     config: AetherConfig,
@@ -640,167 +644,4 @@ fun WebsiteBypassDialog(
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("اسپلیت تونل سایت‌ها", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
-                            Text("سایت‌هایی که بدون فیلترشکن باز می‌شوند", color = IosSecondaryLabel, fontSize = 11.sp)
-                        }
-                        IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Default.Close, null, tint = IosSecondaryLabel, modifier = Modifier.size(18.dp))
-                        }
-                    }
-
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.5.dp)
-
-                    // ۱. کلید طلایی: دور زدن تمام سایت‌های ایرانی (.ir)
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(IosGroupBg)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("دور زدن تمام سایت‌های ایرانی (.ir)", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
-                            Text("بانک‌ها، اسنپ، دیجی‌کالا و سایت‌های داخلی", color = IosSecondaryLabel, fontSize = 10.sp)
-                        }
-                        Switch(
-                            checked = hasIranBypass,
-                            onCheckedChange = { enabled ->
-                                val updated = if (enabled) {
-                                    config.routingRules.filterNot { it.pattern.contains(".ir") } +
-                                            RoutingRule(pattern = "keyword:.ir", mode = RoutingMode.DIRECT)
-                                } else {
-                                    config.routingRules.filterNot { it.pattern.contains(".ir") }
-                                }
-                                onUpdateConfig(config.copy(routingRules = updated))
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = IosActiveGreen
-                            )
-                        )
-                    }
-
-                    // ۲. کادر ساده برای وارد کردن دستی آدرس سایت
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        BasicTextField(
-                            value = newSiteText,
-                            onValueChange = { newSiteText = it.trim().lowercase() },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.Black.copy(alpha = 0.35f))
-                                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp),
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                            singleLine = true,
-                            cursorBrush = SolidColor(IosActiveBlue),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                if (newSiteText.isNotEmpty()) {
-                                    val clean = newSiteText.removePrefix("https://").removePrefix("http://").substringBefore('/')
-                                    val updated = config.routingRules + RoutingRule(pattern = clean, mode = RoutingMode.DIRECT)
-                                    onUpdateConfig(config.copy(routingRules = updated))
-                                    newSiteText = ""
-                                }
-                            }),
-                            decorationBox = { innerTextField ->
-                                Box(contentAlignment = Alignment.CenterStart) {
-                                    if (newSiteText.isEmpty()) {
-                                        Text("مثال: snapp.ir یا divar.ir", color = IosSecondaryLabel, fontSize = 12.sp)
-                                    }
-                                    innerTextField()
-                                }
-                            }
-                        )
-
-                        Button(
-                            onClick = {
-                                if (newSiteText.isNotEmpty()) {
-                                    val clean = newSiteText.removePrefix("https://").removePrefix("http://").substringBefore('/')
-                                    val updated = config.routingRules + RoutingRule(pattern = clean, mode = RoutingMode.DIRECT)
-                                    onUpdateConfig(config.copy(routingRules = updated))
-                                    newSiteText = ""
-                                }
-                            },
-                            modifier = Modifier.height(44.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = IosActiveBlue)
-                        ) {
-                            Text("افزودن", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-                    }
-
-                    // ۳. لیست سایت‌های ثبت شده با امکان حذف با یک کلیک
-                    Text("سایت‌های در حال حاضر مستقیم:", color = IosSecondaryLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-
-                    val customDirectList = directRules.filterNot { it.pattern.contains(".ir") }
-                    if (customDirectList.isEmpty() && !hasIranBypass) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("هیچ سایتی اضافه نشده است (همه از فیلترشکن رد می‌شوند)", color = IosSecondaryLabel, fontSize = 11.sp)
-                        }
-                    } else {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 180.dp)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            customDirectList.forEach { rule ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.White.copy(alpha = 0.05f))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(rule.pattern, color = Color.White, fontSize = 12.sp)
-                                    IconButton(
-                                        onClick = {
-                                            val updated = config.routingRules.filterNot { it == rule }
-                                            onUpdateConfig(config.copy(routingRules = updated))
-                                        },
-                                        modifier = Modifier.size(20.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, null, tint = IosErrorRed, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth().height(42.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = IosGroupBg)
-                    ) {
-                        Text("بستن و ذخیره", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-                }
-            }
-        }
-    }
-}
-
-private const val TelegramChannelUrl = "https://t.me/PowerSigma"
+                    verticalArrangement = Arrange
