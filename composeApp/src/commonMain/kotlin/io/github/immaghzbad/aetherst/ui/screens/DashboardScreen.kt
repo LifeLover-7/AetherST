@@ -4,149 +4,47 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.immaghzbad.aetherst.shared.ui.theme.AppPalette
 import io.github.immaghzbad.aetherst.shared.ui.components.*
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.*
+import androidx.compose.foundation.gestures.*
+import androidx.compose.foundation.interaction.*
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.*
+import androidx.compose.foundation.text.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.automirrored.filled.Send
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Public
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.SportsEsports
-import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material.icons.filled.VpnLock
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.VerticalDivider
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.automirrored.filled.*
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
-import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.LayoutDirection
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.*
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import io.github.immaghzbad.aetherst.platform.PlatformContext
-import io.github.immaghzbad.aetherst.platform.getSettings
-import io.github.immaghzbad.aetherst.platform.getSystemUtils
-import io.github.immaghzbad.aetherst.platform.isDesktop
-import io.github.immaghzbad.aetherst.platform.isWindows
+import io.github.immaghzbad.aetherst.platform.*
 import io.github.immaghzbad.aetherst.shared.data.IpInfo
 import io.github.immaghzbad.aetherst.shared.data.PingState
 import io.github.immaghzbad.aetherst.shared.data.PsiphonEgressRegistry
-import io.github.immaghzbad.aetherst.shared.model.AetherConfig
-import io.github.immaghzbad.aetherst.shared.model.AetherProtocol
-import io.github.immaghzbad.aetherst.shared.model.ChainProvider
-import io.github.immaghzbad.aetherst.shared.model.TorMode
-import io.github.immaghzbad.aetherst.shared.model.ConnectionMode
-import io.github.immaghzbad.aetherst.shared.model.PsiphonChainMode
-import io.github.immaghzbad.aetherst.shared.model.ConnectionStatus
-import io.github.immaghzbad.aetherst.shared.model.RoutingMode
-import io.github.immaghzbad.aetherst.shared.model.RoutingRule
-import io.github.immaghzbad.aetherst.shared.model.SessionTraffic
-import io.github.immaghzbad.aetherst.shared.ui.components.CountryFlag
 import io.github.immaghzbad.aetherst.shared.i18n.LocalAppStrings
 import io.github.immaghzbad.aetherst.shared.i18n.StringsFa
+import io.github.immaghzbad.aetherst.shared.model.*
+import io.github.immaghzbad.aetherst.shared.ui.components.CountryFlag
 import io.github.immaghzbad.aetherst.shared.util.CountryNames
 import kotlinx.coroutines.launch
 
@@ -312,7 +210,7 @@ fun DashboardScreen(
                     scaleFactor = scaleFactor
                 )
 
-                // ردیف میانبر اسپلیت تونل سایت‌ها
+                // دکمه میانبر برای اسپلیت تونل سایت‌ها
                 Card(
                     modifier = Modifier.fillMaxWidth().clickable { showBypassSheet = true },
                     shape = RoundedCornerShape(14.dp),
@@ -528,16 +426,11 @@ fun DashboardScreen(
                             scaleFactor = scaleFactor
                         )
                     }
+
+                    // انتخاب پروتکل استاندارد
                     IosProtocolSegmentedControl(
                         selectedProtocol = config.protocol,
-                        onProtocolSelected = { proto ->
-                            if (proto == AetherProtocol.GOOL && config.wiwInner.isBlank()) {
-                                // خودکار سرور استانبول ترکیه یا فرانکفورت برای خروجی غیرایرانی و پینگ پایین
-                                onUpdateConfig(config.copy(protocol = proto, wiwInner = "162.159.193.1:2408"))
-                            } else {
-                                onUpdateProtocol(proto)
-                            }
-                        },
+                        onProtocolSelected = onUpdateProtocol,
                         enabled = connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR,
                         allowedProtocols = if (config.isPsiphonActive() || config.isTorActive()) setOf(AetherProtocol.MASQUE, AetherProtocol.WG, AetherProtocol.GOOL) else null,
                         scaleFactor = scaleFactor
@@ -546,7 +439,6 @@ fun DashboardScreen(
             }
         }
 
-        // پاپ‌آپ اسپلیت تونل سایت‌ها
         if (showBypassSheet) {
             WebsiteBypassDialog(
                 config = config,
@@ -583,6 +475,7 @@ fun DashboardScreen(
                 scaleFactor = scaleFactor
             )
         }
+
         if (showPsiphonSheet) {
             PsiphonOptionsSheet(
                 config = config,
@@ -591,6 +484,7 @@ fun DashboardScreen(
                 scaleFactor = scaleFactor
             )
         }
+
         if (showTorSheet) {
             TorOptionsSheet(
                 config = config,
@@ -1251,7 +1145,7 @@ fun CapsuleConnectButton(
                     letterSpacing = (if (strings is StringsFa) 0.1f else 0.6f * sf).sp,
                     maxLines = 1,
                     softWrap = false,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center
                 )
             }
@@ -1332,11 +1226,11 @@ fun WindowsSwipeSwitch(
                 .background(Color.Transparent),
             contentAlignment = Alignment.Center
         ) {
-            val maxWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { maxWidth.toPx() }
+            val maxWidthPx = with(LocalDensity.current) { maxWidth.toPx() }
             val thumbSize = (48 * sf).dp.coerceIn(42.dp, 56.dp)
-            val thumbPx = with(androidx.compose.ui.platform.LocalDensity.current) { thumbSize.toPx() }
+            val thumbPx = with(LocalDensity.current) { thumbSize.toPx() }
             val horizontalPadding = (8 * sf).dp
-            val paddingPx = with(androidx.compose.ui.platform.LocalDensity.current) { horizontalPadding.toPx() }
+            val paddingPx = with(LocalDensity.current) { horizontalPadding.toPx() }
             val maxDrag = (maxWidthPx - thumbPx - paddingPx * 2).coerceAtLeast(0f)
             val dragFraction = when {
                 !canSwipe || maxDrag == 0f -> 0f
@@ -1381,7 +1275,7 @@ fun WindowsSwipeSwitch(
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         softWrap = false,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.padding(horizontal = ((if (strings is StringsFa) 50 else 56) * sf).dp)
                     )
                 }
@@ -1394,7 +1288,7 @@ fun WindowsSwipeSwitch(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
                     .padding(horizontal = horizontalPadding)
-                    .offset { androidx.compose.ui.unit.IntOffset((offsetX.value + hintOffset).toInt(), 0) }
+                    .offset { IntOffset((offsetX.value + hintOffset).toInt(), 0) }
                     .size(thumbSize)
                     .shadow(8.dp, CircleShape, clip = false)
                     .clip(CircleShape)
