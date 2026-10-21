@@ -392,7 +392,19 @@ fun DashboardScreen(
                                     }
                                     Switch(
                                         checked = config.psiphonEnabled && psiphonAllowed,
-                                        onCheckedChange = { onTogglePsiphon(it) },
+                                        onCheckedChange = { enabled ->
+                                            // پیش‌فرض وایرگارد به عنوان پروتکل بیرونی اتصال سایفون
+                                            val targetOuter = if (config.psiphonChainOuter.isBlank() || config.psiphonChainOuter == "masque") "wg" else config.psiphonChainOuter
+                                            val targetProto = if (config.protocol == AetherProtocol.MASQUE) AetherProtocol.WG else config.protocol
+                                            onUpdateConfig(
+                                                config.copy(
+                                                    psiphonEnabled = enabled,
+                                                    chainProvider = ChainProvider.PSIPHON,
+                                                    psiphonChainOuter = targetOuter,
+                                                    protocol = targetProto
+                                                )
+                                            )
+                                        },
                                         enabled = psiphonAllowed && (connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR),
                                         colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = IosActiveGreen, checkedBorderColor = Color.Transparent, uncheckedThumbColor = Color.White, uncheckedTrackColor = AppPalette.inactiveTrack, uncheckedBorderColor = Color.Transparent)
                                     )
@@ -427,7 +439,6 @@ fun DashboardScreen(
                         )
                     }
 
-                    // انتخاب پروتکل استاندارد
                     IosProtocolSegmentedControl(
                         selectedProtocol = config.protocol,
                         onProtocolSelected = onUpdateProtocol,
@@ -475,7 +486,6 @@ fun DashboardScreen(
                 scaleFactor = scaleFactor
             )
         }
-
         if (showPsiphonSheet) {
             PsiphonOptionsSheet(
                 config = config,
@@ -484,7 +494,6 @@ fun DashboardScreen(
                 scaleFactor = scaleFactor
             )
         }
-
         if (showTorSheet) {
             TorOptionsSheet(
                 config = config,
@@ -1726,6 +1735,33 @@ private fun PsiphonOptionsSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(strings.PSIPHON_OPTIONS_TITLE, fontWeight = FontWeight.Bold, fontSize = (18 * scaleFactor).sp, color = Color.White)
+
+            // انتخاب پروتکل لایه بیرونی (پیش‌فرض WireGuard)
+            val outerOptions = listOf("WireGuard", "MASQUE", "Gool")
+            val outerValues = listOf("wg", "masque", "gool")
+            val currentOuter = when (config.psiphonChainOuter) {
+                "masque" -> "MASQUE"
+                "gool" -> "Gool"
+                else -> "WireGuard"
+            }
+            IosPickerRow(
+                icon = Icons.Default.VpnLock,
+                iconBg = AppPalette.statusConnected,
+                title = strings.OUTER_PROTOCOL,
+                value = currentOuter,
+                options = outerOptions,
+                onOptionSelected = { idx ->
+                    val outer = outerValues[idx]
+                    val proto = when (outer) {
+                        "masque" -> AetherProtocol.MASQUE
+                        "gool" -> AetherProtocol.GOOL
+                        else -> AetherProtocol.WG
+                    }
+                    onUpdateConfig(config.copy(psiphonChainOuter = outer, protocol = proto))
+                }
+            )
+
+            // انتخاب کشور خروجی سایفون
             val availableRegions by PsiphonEgressRegistry.availableRegions.collectAsStateWithLifecycle()
             val selectedRegion = config.psiphonEgressRegion.trim().uppercase()
             val regionCodes = buildList {
