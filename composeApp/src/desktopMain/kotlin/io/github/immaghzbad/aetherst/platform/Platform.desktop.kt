@@ -396,8 +396,9 @@ class DesktopSystemUtils : SystemUtils {
     }
 
     override fun isAdministrator(): Boolean = io.github.immaghzbad.aetherst.shared.core.Elevation.isElevated()
-    override fun relaunchAsAdmin() = io.github.immaghzbad.aetherst.shared.core.Elevation.relaunchElevatedAndExit()
-    override fun getInterfaceMtu(): Int = runCatching {
+override fun relaunchAsAdmin() {
+    io.github.immaghzbad.aetherst.shared.core.Elevation.relaunchElevatedAndExit()
+}    override fun getInterfaceMtu(): Int = runCatching {
         java.net.NetworkInterface.getNetworkInterfaces().asSequence().firstOrNull { it.isUp && !it.isLoopback && !it.isVirtual }?.mtu ?: 1500
     }.getOrDefault(1500)
 
