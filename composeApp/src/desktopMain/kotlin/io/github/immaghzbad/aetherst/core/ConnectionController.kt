@@ -111,17 +111,6 @@ actual object ConnectionController {
             val config = AetherConfigRepository.getInstance(getSettings(context)).config.value.effectiveZeroTrustConfig()
             var effectiveConfig = config
 
-            // ست کردن هر دو لایه بیرونی (ایران) و درونی (ترکیه) برای پروتکل GOOL
-            if (effectiveConfig.protocol == AetherProtocol.GOOL) {
-    effectiveConfig = effectiveConfig.copy(wiwScan = true)
-    LogRepository.i("[Controller] GOOL mode: auto-scan enabled for clean endpoints")
-}
-                if (effectiveConfig.wiwInner.isBlank()) {
-                    effectiveConfig = effectiveConfig.copy(wiwInner = "162.159.193.1:2408")
-                }
-                LogRepository.i("[Controller] GOOL mode: outer=${effectiveConfig.wiwOuter} inner=${effectiveConfig.wiwInner}")
-            }
-
             if (CloakController.isSupported(config)) {
                 val started = runCatching { CloakController.start(context, config) }.getOrDefault(false)
                 if (started && CloakController.isRunning()) {
@@ -282,7 +271,7 @@ actual object ConnectionController {
             val rawDiffTx = (currentTx - baseTx).coerceAtLeast(0L)
             val rawDiffRx = (currentRx - baseRx).coerceAtLeast(0L)
 
-            val divisor = if (isPsiphonActive) 3.0 else 2.0
+            val divisor = if (isPsiphonActive) 3.5 else 2.0
             val totalTx = (rawDiffTx / divisor).toLong().coerceAtLeast(0L)
             val totalRx = (rawDiffRx / divisor).toLong().coerceAtLeast(0L)
 
