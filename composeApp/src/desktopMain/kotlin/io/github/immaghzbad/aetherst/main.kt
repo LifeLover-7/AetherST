@@ -61,6 +61,10 @@ private fun sweepChildProcesses() {
         ProcessBuilder("taskkill", "/F", "/T", "/IM", "hev-socks5-tunnel.exe")
             .redirectErrorStream(true).start().waitFor(5, TimeUnit.SECONDS)
     }
+    runCatching {
+        ProcessBuilder("taskkill", "/F", "/T", "/IM", "psiphon-tunnel-core.exe")
+            .redirectErrorStream(true).start().waitFor(5, TimeUnit.SECONDS)
+    }
 }
 
 private fun cleanTempFiles() {
