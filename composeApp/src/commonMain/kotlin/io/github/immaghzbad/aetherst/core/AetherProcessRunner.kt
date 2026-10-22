@@ -121,7 +121,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 else -> "--dual"
             })
 
-            // فلگ‌های مختص MASQUE / Zero Trust نباید در حالت WG و GOOL ارسال شوند
+            // ارسال فلگ‌های MASQUE فقط زمانی که پروتکل MASQUE یا ZERO_TRUST است (جلوگیری از تداخل در GOOL و WG)
             val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.ZERO_TRUST
             if (isMasqueBased) {
                 if (config.h2Mode) command.add("--h2")
@@ -145,7 +145,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
             val wiwInner = if (config.protocol == AetherProtocol.GOOL) config.wiwInner.trim() else ""
             val hasFullWiwManual = wiwOuter.isNotEmpty() && wiwInner.isNotEmpty()
 
-            // در حالت GOOL از --wiw-outer / --wiw-inner / --wiw-scan استفاده می‌شود و نباید --peer تک‌نودی اسکنر را قفل کند
+            // در GOOL نباید --peer تک‌نودی ارسال شود تا اسکنر دو مرحله‌ای (--wiw-scan) از کار نیفتد
             val effectivePeerForCmd = when (config.protocol) {
                 AetherProtocol.GOOL -> ""
                 AetherProtocol.WG -> config.wgPeer.trim().ifEmpty { config.peer.trim() }
@@ -204,7 +204,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
             env["AETHER_SCAN"] = config.scanMode.rawValue
             env["AETHER_IP"] = config.effectiveIpMode().rawValue
             env["AETHER_SOCKS"] = bindAddress
-            // سطح لاگ خروجی هسته همیشه حداقل info باشد تا parseOutputLine پیام‌های tunnel validated را دریافت کند
+            // حداقل سطح info برای دریافت پیام‌های تایید تونل توسط parseOutputLine
             env["AETHER_LOG_LEVEL"] = if (config.coreLogLevel == AetherLogLevel.DEBUG) "debug" else "info"
             env["AETHER_PERF_PROFILE"] = config.perfProfile.rawValue
             if (routingFile != null) {
@@ -216,4 +216,213 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 if (config.h2Fragment) {
                     env["AETHER_MASQUE_H2_FRAGMENT"] = "1"
                     env["AETHER_MASQUE_H2_FRAGMENT_SIZE"] = config.fragmentSize
-                    env["AETHER
+                    env["AETHER_MASQUE_H2_FRAGMENT_DELAY"] = config.fragmentDelay
+                }
+            }
+            if (config.httpProxyEnabled) env["AETHER_HTTP_PROXY"] = "$httpBindHost:$actualHttpPort"
+            if (config.noDataCheck) {
+                env["AETHER_MASQUE_NO_DATA_CHECK"] = "1"
+                env["AETHER_WG_NO_DATA_CHECK"] = "1"
+            }
+            env["AETHER_QUICK_RECONNECT"] = if (config.quickReconnect) "1" else "0"
+
+            when (config.protocol) {
+                AetherProtocol.GOOL -> {
+                    if (wiwOuter.isNotEmpty()) env["AETHER_WIW_OUTER_PEER"] = wiwOuter
+                    if (wiwInner.isNotEmpty()) env["AETHER_WIW_INNER_PEER"] = wiwInner
+                    if (!hasFullWiwManual || config.wiwScan) env["AETHER_WIW_PEERS"] = "auto"
+                }
+                AetherProtocol.WG -> {
+                    if (effectivePeerForCmd.isNotEmpty()) {
+                        env["AETHER_WG_PEER"] = effectivePeerForCmd
+                        env["AETHER_PEER"] = effectivePeerForCmd
+                    }
+                }
+                else -> {
+                    if (config.peer.isNotEmpty()) env["AETHER_PEER"] = config.peer
+                }
+            }
+
+            env["AETHER_WG_KEEPALIVE"] = if (config.keepaliveEnabled) config.keepalive.toString() else "0"
+            env["AETHER_WG_ENDPOINT_COOLDOWN_SECS"] = config.wgEndpointCooldownSecs.toString()
+            env["AETHER_MASQUE_VALIDATE_SECS"] = config.validateSecs.toString()
+            env["AETHER_WG_VALIDATE_SECS"] = config.validateSecs.toString()
+            env["AETHER_MASQUE_RECONNECT_SECS"] = config.reconnectSecs.toString()
+            env["AETHER_WG_RECONNECT_SECS"] = config.reconnectSecs.toString()
+            if (config.noProfileRetry) env["AETHER_WG_NO_PROFILE_RETRY"] = "1"
+            if (config.tlsGroups.isNotEmpty()) env["AETHER_TLS_GROUPS"] = config.tlsGroups
+            if (config.masqueMtu > 0) env["AETHER_MASQUE_MTU"] = config.masqueMtu.toString()
+            if (config.netstackTcpRx > 0) env["AETHER_NETSTACK_TCP_RX"] = config.netstackTcpRx.toString()
+            if (config.netstackTcpTx > 0) env["AETHER_NETSTACK_TCP_TX"] = config.netstackTcpTx.toString()
+            if (config.protocol == AetherProtocol.ZERO_TRUST) {
+                if (config.teamName.isNotEmpty()) env["AETHER_TEAM"] = config.teamName
+                when {
+                    config.accessToken.isNotEmpty() -> env["AETHER_ACCESS_TOKEN"] = config.accessToken
+                    config.accessId.isNotEmpty() || config.accessSecret.isNotEmpty() -> {
+                        env["AETHER_ACCESS_ID"] = config.accessId
+                        env["AETHER_ACCESS_SECRET"] = config.accessSecret
+                        env["AETHER_ACCESS_CLIENT_ID"] = config.accessId
+                        env["AETHER_ACCESS_CLIENT_SECRET"] = config.accessSecret
+                    }
+                    config.accessEmail.isNotEmpty() -> env["AETHER_ACCESS_EMAIL"] = config.accessEmail
+                }
+                if (config.useGateway) env["AETHER_GATEWAY"] = "1"
+            }
+            if (config.dnsEnabled && config.dnsList.isNotEmpty()) env["AETHER_DNS"] = config.dnsList
+            if (config.upstreamProxyEnabled && config.upstreamProxy.isNotEmpty()) env["AETHER_UPSTREAM"] = config.upstreamProxy
+            env["AETHER_ROUTE_SNIFF"] = if (config.routeSniffing) "1" else "0"
+            env["AETHER_ROUTE_SNIFF_MS"] = config.sniffingTimeoutMs.toString()
+            env["AETHER_REPROVISION"] = if (config.reprovision) "1" else "0"
+
+            LogRepository.d("Executing: ${command.joinToString(" ")}")
+            if (!proc.start(command, systemUtils.getFilesDir(), env)) {
+                LogRepository.e("Failed to start process: $binaryPath")
+                return@coroutineScope false
+            }
+            process = proc
+            val inputJob = launch {
+                while (isActive) {
+                    val text = inputProvider()
+                    if (text.isNotEmpty()) {
+                        proc.writeLine(text)
+                        LogRepository.d("Sent input to binary")
+                    }
+                }
+            }
+            while (isActive && currentAttemptId.get() == attemptId) {
+                val line = proc.readLine() ?: break
+                parseOutputLine(line, attemptId, config.protocol, onCodeRequired)
+            }
+            inputJob.cancel()
+            val exitCode = proc.waitFor()
+            LogRepository.i("Core process terminated (Exit code: $exitCode)")
+            exitCode == 0
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            if (currentAttemptId.get() == attemptId) {
+                LogRepository.e("Binary execution runtime error: ${e.message}")
+            }
+            false
+        } finally {
+            proc.destroy()
+        }
+    }
+
+    private fun parseOutputLine(line: String, attemptId: Long, protocol: AetherProtocol, onCodeRequired: () -> Unit) {
+        if (currentAttemptId.get() != attemptId) return
+        val lower = line.lowercase()
+        when {
+            lower.contains(" error ") || lower.contains("[error]") -> LogRepository.e(line, "AetherCore")
+            lower.contains(" warn ") || lower.contains("[warn]") -> LogRepository.w(line, "AetherCore")
+            else -> LogRepository.i(line, "AetherCore")
+        }
+
+        if (protocol == AetherProtocol.ZERO_TRUST && isZeroTrustCodePrompt(lower)) {
+            onCodeRequired()
+            return
+        }
+
+        when {
+            lower.contains("scanning") -> {
+                goolOuterValidated = false
+                updateState(ConnectionStatus.STARTING, attemptId)
+            }
+            lower.contains("validating") -> updateState(ConnectionStatus.VALIDATING, attemptId)
+            (protocol == AetherProtocol.MASQUE && (lower.contains("tunnel validated") || lower.contains("connect-ip status: 200"))) ||
+            (protocol == AetherProtocol.ZERO_TRUST && (lower.contains("tunnel validated") || lower.contains("connect-ip status: 200") || lower.contains("handshake complete"))) ||
+            (protocol == AetherProtocol.WG && (lower.contains("wireguard tunnel validated") || lower.contains("handshake complete") || lower.contains("tunnel validated"))) -> {
+                updateState(ConnectionStatus.RUNNING, attemptId)
+            }
+            protocol == AetherProtocol.GOOL -> {
+                if (lower.contains("outer") && (lower.contains("tunnel validated") || lower.contains("handshake complete") || lower.contains("connected"))) {
+                    goolOuterValidated = true
+                }
+                if ((lower.contains("inner") && (lower.contains("tunnel validated") || lower.contains("handshake complete"))) ||
+                    lower.contains("gool tunnel validated") ||
+                    lower.contains("wiw tunnel validated") ||
+                    (goolOuterValidated && lower.contains("tunnel validated") && !lower.contains("outer"))
+                ) {
+                    updateState(ConnectionStatus.RUNNING, attemptId)
+                }
+            }
+            lower.contains("reconnecting") || lower.contains("tunnel lost") || lower.contains("handshake timeout") ||
+                lower.contains("handshake failed") || lower.contains("connection refused") || lower.contains("all gateways failed") -> {
+                goolOuterValidated = false
+                updateState(ConnectionStatus.RECONNECTING, attemptId)
+            }
+        }
+    }
+
+    private fun isZeroTrustCodePrompt(line: String): Boolean {
+        return line.contains("code") && (
+            line.contains("enter") || line.contains("login") || line.contains("verif") ||
+            line.contains("confirm") || line.contains("otp") || line.contains("one-time") ||
+            line.contains("type the") || line.contains("paste") || line.contains("prompt")
+        )
+    }
+
+    private fun updateState(state: ConnectionStatus, attemptId: Long) {
+        if (currentAttemptId.get() == attemptId) _connectionStatus.value = state
+    }
+
+    private fun writeRoutingFile(config: AetherConfig): java.io.File? {
+        val block = config.routingRules.filter { it.mode == RoutingMode.BLOCK }
+        val direct = config.routingRules.filter { it.mode == RoutingMode.DIRECT }
+
+        if (block.isEmpty() && direct.isEmpty()) return null
+
+        return try {
+            val file = java.io.File(systemUtils.getFilesDir(), "routing.ast")
+            val content = StringBuilder()
+
+            if (block.isNotEmpty()) {
+                content.append("[block]\n")
+                block.forEach { content.append(formatRoutingPattern(it.pattern)).append("\n") }
+                content.append("\n")
+            }
+
+            if (direct.isNotEmpty()) {
+                content.append("[direct]\n")
+                direct.forEach { content.append(formatRoutingPattern(it.pattern)).append("\n") }
+                content.append("\n")
+            }
+
+            file.writeText(content.toString())
+            LogRepository.i("Routing file generated with ${block.size} blocked and ${direct.size} direct rules.")
+            file
+        } catch (e: Exception) {
+            LogRepository.e("Failed to write routing file: ${e.message}")
+            null
+        }
+    }
+
+    private fun formatRoutingPattern(pattern: String): String {
+        val trimmed = pattern.trim()
+        if (trimmed.startsWith("domain:") || trimmed.startsWith("ip:") ||
+            trimmed.startsWith("keyword:") || trimmed.startsWith("regexp:") ||
+            trimmed == "private") {
+            return trimmed
+        }
+
+        val isIp = trimmed.all { it.isDigit() || it == '.' || it == ':' || it == '/' || (it.lowercaseChar() in 'a'..'f') } &&
+                (trimmed.contains('.') || trimmed.contains(':'))
+
+        return if (isIp) "ip:$trimmed" else "domain:$trimmed"
+    }
+
+    fun stop() {
+        currentAttemptId.incrementAndGet()
+        goolOuterValidated = false
+        _connectionStatus.value = ConnectionStatus.STOPPED
+        runnerJob?.cancel()
+        process?.destroy()
+        process = null
+        LogRepository.i("System core shutdown initiated.")
+    }
+
+    fun release() {
+        stop()
+        scope.cancel()
+    }
+}
