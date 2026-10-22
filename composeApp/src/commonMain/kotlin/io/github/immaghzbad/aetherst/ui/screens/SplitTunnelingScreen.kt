@@ -19,9 +19,12 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
@@ -47,6 +50,7 @@ import io.github.immaghzbad.aetherst.platform.AppIcon
 import io.github.immaghzbad.aetherst.platform.isDesktop
 import io.github.immaghzbad.aetherst.shared.i18n.LocalAppStrings
 import io.github.immaghzbad.aetherst.shared.model.AppInfo
+import io.github.immaghzbad.aetherst.shared.model.SplitTunnelAppManager
 
 private val IosCardBg = AppPalette.surfaceRaised
 private val IosSecondaryLabel = AppPalette.textSecondary
@@ -75,18 +79,26 @@ fun SplitTunnelingScreen(
     var modeFilter by remember { mutableIntStateOf(0) }
     val isWindowsDesktop = isDesktop
 
+    val customApps by SplitTunnelAppManager.customApps.collectAsState()
+    val removedPackages by SplitTunnelAppManager.removedPackages.collectAsState()
+
+    val effectiveApps = remember(apps, customApps, removedPackages) {
+        (customApps + apps)
+            .distinctBy { it.packageName.lowercase() }
+            .filterNot { removed -> removedPackages.any { it.equals(removed.packageName, ignoreCase = true) } }
+    }
+
     if (showHelpDialog) {
         SplitTunnelHelpDialog(visible = animateDialog, onDismiss = { animateDialog = false }, onTransitionEnd = { showHelpDialog = false }, scaleFactor = scaleFactor)
     }
     LaunchedEffect(showHelpDialog) { if (showHelpDialog) animateDialog = true }
 
-    // اصلاح شمارنده‌ها: وقتی کل دستگاه در تونل است، برنامه‌ها در حالت پیش‌فرض تونل شده محسوب می‌شوند
     val blockedCount = blockedPackages.size
-    val bypassCount = if (tunnelAllApps) excludedPackages.size else (apps.size - tunneledPackages.size - blockedCount).coerceAtLeast(0)
-    val tunneledCount = if (tunnelAllApps) (apps.size - bypassCount - blockedCount).coerceAtLeast(0) else tunneledPackages.size
+    val bypassCount = if (tunnelAllApps) excludedPackages.size else (effectiveApps.size - tunneledPackages.size - blockedCount).coerceAtLeast(0)
+    val tunneledCount = if (tunnelAllApps) (effectiveApps.size - bypassCount - blockedCount).coerceAtLeast(0) else tunneledPackages.size
 
-    val filteredApps = remember(apps, searchQuery, selectedTab, excludedPackages, tunneledPackages, blockedPackages, modeFilter, tunnelAllApps) {
-        apps.filter { app ->
+    val filteredApps = remember(effectiveApps, searchQuery, selectedTab, excludedPackages, tunneledPackages, blockedPackages, modeFilter, tunnelAllApps) {
+        effectiveApps.filter { app ->
             val matchesTab = if (selectedTab == 0) !app.isSystemApp else app.isSystemApp
             val matchesSearch = searchQuery.isEmpty() || app.name.contains(searchQuery, ignoreCase = true) || app.packageName.contains(searchQuery, ignoreCase = true)
             val mode = when {
@@ -111,14 +123,50 @@ fun SplitTunnelingScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Color.Black).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { focusManager.clearFocus() }) {
-        Row(modifier = Modifier.fillMaxWidth().padding(start = (8 * scaleFactor).dp, end = (16 * scaleFactor).dp, top = if (isWindowsDesktop) 12.dp else 36.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack, modifier = Modifier.size((36 * scaleFactor).dp)) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size((20 * scaleFactor).dp)) }
+        Row(modifier = Modifier.fillMaxWidth().padding(start = (8 * scaleFactor).dp, end = (12 * scaleFactor).dp, top = if (isWindowsDesktop) 12.dp else 36.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack, modifier = Modifier.size((36 * scaleFactor).dp)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size((20 * scaleFactor).dp))
+            }
             Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(strings.SPLIT_TITLE, fontWeight = FontWeight.Bold, color = Color.White, fontSize = (18 * scaleFactor).sp, lineHeight = (20 * scaleFactor).sp)
                 Text(strings.SPLIT_STATS_TUNNEL_BYPASS_BLOCKED.format(tunneledCount, bypassCount, blockedCount), color = IosSecondaryLabel, fontSize = (11 * scaleFactor).sp)
             }
-            IconButton(onClick = { showHelpDialog = true }, modifier = Modifier.size((36 * scaleFactor).dp)) { Icon(Icons.Default.Info, null, tint = IosActiveBlue, modifier = Modifier.size((20 * scaleFactor).dp)) }
+            if (isWindowsDesktop) {
+                if (removedPackages.isNotEmpty()) {
+                    IconButton(
+                        onClick = { SplitTunnelAppManager.onRestoreRemovedApps?.invoke() },
+                        modifier = Modifier.size((34 * scaleFactor).dp)
+                    ) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Restore Removed Apps", tint = IosActiveGreen, modifier = Modifier.size((18 * scaleFactor).dp))
+                    }
+                    Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
+                }
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(IosActiveBlue)
+                        .clickable {
+                            SplitTunnelAppManager.onPickDesktopApp?.invoke { pickedApp ->
+                                if (pickedApp != null) {
+                                    selectedTab = 0
+                                    // فعال‌سازی خودکار برنامه اضافه‌شده (در حالت کل دستگاه = Bypass، در غیر این صورت = Tunnel)
+                                    onUpdateMode(pickedApp.packageName, if (tunnelAllApps) 0 else 1)
+                                }
+                            }
+                        }
+                        .padding(horizontal = (10 * scaleFactor).dp, vertical = (6 * scaleFactor).dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size((15 * scaleFactor).dp))
+                    Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
+                    Text("افزودن برنامه", color = Color.White, fontWeight = FontWeight.Bold, fontSize = (11 * scaleFactor).sp)
+                }
+                Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
+            }
+            IconButton(onClick = { showHelpDialog = true }, modifier = Modifier.size((36 * scaleFactor).dp)) {
+                Icon(Icons.Default.Info, null, tint = IosActiveBlue, modifier = Modifier.size((20 * scaleFactor).dp))
+            }
         }
 
         if (tunnelAllApps) {
@@ -127,7 +175,7 @@ fun SplitTunnelingScreen(
                 Spacer(modifier = Modifier.width((8 * scaleFactor).dp))
                 Column {
                     Text(strings.SPLIT_WHOLE_DEVICE_ON, color = Color(0xFFFFD60A), fontWeight = FontWeight.Bold, fontSize = (12 * scaleFactor).sp, textAlign = TextAlign.Start)
-                    Text("هر برنامه‌ای را که در لیست زیر روشن کنید، از تونل کل دستگاه خارج (Bypass) می‌شود.", color = Color.White.copy(alpha = 0.6f), fontSize = (11 * scaleFactor).sp, lineHeight = (15 * scaleFactor).sp, textAlign = TextAlign.Start)
+                    Text("هر برنامه‌ای را که در لیست زیر خاموش کنید، از تونل کل دستگاه خارج (Bypass) می‌شود.", color = Color.White.copy(alpha = 0.6f), fontSize = (11 * scaleFactor).sp, lineHeight = (15 * scaleFactor).sp, textAlign = TextAlign.Start)
                 }
             }
         }
@@ -155,7 +203,6 @@ fun SplitTunnelingScreen(
             }
         }
 
-        // تب‌های فیلتر با نمایش اصلاح‌شده مقادیر
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = (16 * scaleFactor).dp, vertical = (4 * scaleFactor).dp), horizontalArrangement = Arrangement.spacedBy((6 * scaleFactor).dp)) {
             listOf(strings.SPLIT_FILTER_ALL, strings.SPLIT_FILTER_TUNNEL, strings.SPLIT_FILTER_BYPASS, strings.SPLIT_FILTER_BLOCKED).forEachIndexed { index, label ->
                 val isSelected = modeFilter == index
@@ -173,14 +220,34 @@ fun SplitTunnelingScreen(
                     tunnelAllApps -> if (excludedPackages.contains(app.packageName)) 0 else 1
                     else -> if (tunneledPackages.contains(app.packageName)) 1 else 0
                 }
-                AppLineItem(app = app, mode = mode, onUpdateMode = { m -> onUpdateMode(app.packageName, m) }, enabled = true, scaleFactor = scaleFactor)
+                AppLineItem(
+                    app = app,
+                    mode = mode,
+                    onUpdateMode = { m -> onUpdateMode(app.packageName, m) },
+                    onRemoveApp = if (isWindowsDesktop) {
+                        {
+                            // بازگردانی حالت برنامه به پیش‌فرض و حذف از لیست
+                            onUpdateMode(app.packageName, if (tunnelAllApps) 1 else 0)
+                            SplitTunnelAppManager.onRemoveApp?.invoke(app.packageName)
+                        }
+                    } else null,
+                    enabled = true,
+                    scaleFactor = scaleFactor
+                )
             }
         }
     }
 }
 
 @Composable
-private fun AppLineItem(app: AppInfo, mode: Int, onUpdateMode: (Int) -> Unit, enabled: Boolean = true, scaleFactor: Float) {
+private fun AppLineItem(
+    app: AppInfo,
+    mode: Int,
+    onUpdateMode: (Int) -> Unit,
+    onRemoveApp: (() -> Unit)? = null,
+    enabled: Boolean = true,
+    scaleFactor: Float
+) {
     val strings = LocalAppStrings.current
     val bg = when (mode) {
         2 -> AppPalette.statusError.copy(alpha = 0.08f)
@@ -196,10 +263,18 @@ private fun AppLineItem(app: AppInfo, mode: Int, onUpdateMode: (Int) -> Unit, en
                 Text(app.packageName, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp, maxLines = 1, textAlign = TextAlign.Left)
                 if (mode != 0) Text(if (mode == 1) strings.SPLIT_TUNNEL_VPN else strings.SPLIT_BLOCKED_NO_INTERNET, color = if (mode == 1) IosActiveBlue else AppPalette.statusError, fontSize = (10 * scaleFactor).sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Left)
             }
-            Spacer(modifier = Modifier.width((8 * scaleFactor).dp))
-            IconButton(onClick = { if (!enabled) return@IconButton; onUpdateMode(if (mode == 2) 0 else 2) }, modifier = Modifier.size((32 * scaleFactor).dp), enabled = enabled) {
+            Spacer(modifier = Modifier.width((6 * scaleFactor).dp))
+            if (onRemoveApp != null) {
+                IconButton(onClick = onRemoveApp, modifier = Modifier.size((30 * scaleFactor).dp), enabled = enabled) {
+                    Box(modifier = Modifier.size((26 * scaleFactor).dp).background(Color.White.copy(alpha = 0.06f), RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Delete, contentDescription = "Remove App", tint = IosSecondaryLabel, modifier = Modifier.size((15 * scaleFactor).dp))
+                    }
+                }
+                Spacer(modifier = Modifier.width((2 * scaleFactor).dp))
+            }
+            IconButton(onClick = { if (!enabled) return@IconButton; onUpdateMode(if (mode == 2) 0 else 2) }, modifier = Modifier.size((30 * scaleFactor).dp), enabled = enabled) {
                 Box(modifier = Modifier.size((26 * scaleFactor).dp).background(if (mode == 2) AppPalette.statusError else Color.White.copy(alpha = 0.08f), RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
-                    Icon(Icons.Default.Block, null, tint = if (mode == 2) Color.White else IosSecondaryLabel, modifier = Modifier.size((16 * scaleFactor).dp))
+                    Icon(Icons.Default.Block, null, tint = if (mode == 2) Color.White else IosSecondaryLabel, modifier = Modifier.size((15 * scaleFactor).dp))
                 }
             }
             Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
