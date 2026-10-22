@@ -22,15 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.*
-import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,7 +82,6 @@ fun DashboardScreen(
     var supportDialogAuto by remember { mutableStateOf(true) }
     var showPsiphonSheet by remember { mutableStateOf(false) }
     var showTorSheet by remember { mutableStateOf(false) }
-    var showBypassSheet by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
     val uriHandler = LocalUriHandler.current
     val settings = platformContext?.let { getSettings(it) }
@@ -209,37 +205,6 @@ fun DashboardScreen(
                     hideConfigChips = isCompactHeight,
                     scaleFactor = scaleFactor
                 )
-
-                // دکمه میانبر برای اسپلیت تونل سایت‌ها
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { showBypassSheet = true },
-                    shape = RoundedCornerShape(14.dp),
-                    colors = CardDefaults.cardColors(containerColor = IosCardBg)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(IosActiveBlue.copy(alpha = 0.15f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(Icons.Default.Language, null, tint = IosActiveBlue, modifier = Modifier.size(16.dp))
-                            }
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Column {
-                                Text("اسپلیت تونل سایت‌ها (Bypass)", fontWeight = FontWeight.Bold, color = Color.White, fontSize = (12 * scaleFactor).sp)
-                                val directCount = config.routingRules.count { it.mode == RoutingMode.DIRECT }
-                                val hasIr = config.routingRules.any { it.mode == RoutingMode.DIRECT && it.pattern.contains(".ir") }
-                                val desc = if (hasIr) "سایت‌های ایرانی فعال + $directCount آدرس مستقیم" else "$directCount سایت بدون فیلترشکن"
-                                Text(desc, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp)
-                            }
-                        }
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = IosSecondaryLabel, modifier = Modifier.size(16.dp))
-                    }
-                }
 
                 if (isWindows && (connectionStatus == ConnectionStatus.RUNNING || connectionStatus == ConnectionStatus.TUN_ACTIVE)) {
                     WindowsProxyPortsCard(
@@ -393,7 +358,6 @@ fun DashboardScreen(
                                     Switch(
                                         checked = config.psiphonEnabled && psiphonAllowed,
                                         onCheckedChange = { enabled ->
-                                            // پیش‌فرض وایرگارد به عنوان پروتکل بیرونی اتصال سایفون
                                             val targetOuter = if (config.psiphonChainOuter.isBlank() || config.psiphonChainOuter == "masque") "wg" else config.psiphonChainOuter
                                             val targetProto = if (config.protocol == AetherProtocol.MASQUE) AetherProtocol.WG else config.protocol
                                             onUpdateConfig(
@@ -450,15 +414,6 @@ fun DashboardScreen(
             }
         }
 
-        if (showBypassSheet) {
-            WebsiteBypassDialog(
-                config = config,
-                onUpdateConfig = onUpdateConfig,
-                onDismiss = { showBypassSheet = false },
-                scaleFactor = scaleFactor
-            )
-        }
-
         if (showAdminRequiredDialog) {
             AdminRequiredDialog(
                 onRelaunch = {
@@ -501,208 +456,6 @@ fun DashboardScreen(
                 onDismiss = { showTorSheet = false },
                 scaleFactor = scaleFactor
             )
-        }
-    }
-}
-
-@Composable
-fun WebsiteBypassDialog(
-    config: AetherConfig,
-    onUpdateConfig: (AetherConfig) -> Unit,
-    onDismiss: () -> Unit,
-    scaleFactor: Float = 1f
-) {
-    var newSiteText by remember { mutableStateOf("") }
-    val directRules = remember(config.routingRules) {
-        config.routingRules.filter { it.mode == RoutingMode.DIRECT }
-    }
-    val hasIranBypass = remember(directRules) {
-        directRules.any { it.pattern.contains(".ir") }
-    }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.65f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss
-                )
-                .padding(horizontal = 24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Card(
-                modifier = Modifier
-                    .widthIn(max = 420.dp)
-                    .fillMaxWidth()
-                    .clickable(enabled = false) {},
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = IosCardBg),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
-            ) {
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text("اسپلیت تونل سایت‌ها", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
-                            Text("سایت‌هایی که بدون فیلترشکن باز می‌شوند", color = IosSecondaryLabel, fontSize = 11.sp)
-                        }
-                        IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Default.Close, null, tint = IosSecondaryLabel, modifier = Modifier.size(18.dp))
-                        }
-                    }
-
-                    HorizontalDivider(color = Color.White.copy(alpha = 0.08f), thickness = 0.5.dp)
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(IosGroupBg)
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("دور زدن تمام سایت‌های ایرانی (.ir)", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
-                            Text("بانک‌ها، اسنپ، دیجی‌کالا و سایت‌های داخلی", color = IosSecondaryLabel, fontSize = 10.sp)
-                        }
-                        Switch(
-                            checked = hasIranBypass,
-                            onCheckedChange = { enabled ->
-                                val updated = if (enabled) {
-                                    config.routingRules.filterNot { it.pattern.contains(".ir") } +
-                                            RoutingRule(pattern = "keyword:.ir", mode = RoutingMode.DIRECT)
-                                } else {
-                                    config.routingRules.filterNot { it.pattern.contains(".ir") }
-                                }
-                                onUpdateConfig(config.copy(routingRules = updated))
-                            },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = IosActiveGreen
-                            )
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        BasicTextField(
-                            value = newSiteText,
-                            onValueChange = { newSiteText = it.trim().lowercase() },
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color.Black.copy(alpha = 0.35f))
-                                .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                .padding(horizontal = 12.dp),
-                            textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White),
-                            singleLine = true,
-                            cursorBrush = SolidColor(IosActiveBlue),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            keyboardActions = KeyboardActions(onDone = {
-                                if (newSiteText.isNotEmpty()) {
-                                    val clean = newSiteText.removePrefix("https://").removePrefix("http://").substringBefore('/')
-                                    val updated = config.routingRules + RoutingRule(pattern = clean, mode = RoutingMode.DIRECT)
-                                    onUpdateConfig(config.copy(routingRules = updated))
-                                    newSiteText = ""
-                                }
-                            }),
-                            decorationBox = { innerTextField ->
-                                Box(contentAlignment = Alignment.CenterStart) {
-                                    if (newSiteText.isEmpty()) {
-                                        Text("مثال: snapp.ir یا divar.ir", color = IosSecondaryLabel, fontSize = 12.sp)
-                                    }
-                                    innerTextField()
-                                }
-                            }
-                        )
-
-                        Button(
-                            onClick = {
-                                if (newSiteText.isNotEmpty()) {
-                                    val clean = newSiteText.removePrefix("https://").removePrefix("http://").substringBefore('/')
-                                    val updated = config.routingRules + RoutingRule(pattern = clean, mode = RoutingMode.DIRECT)
-                                    onUpdateConfig(config.copy(routingRules = updated))
-                                    newSiteText = ""
-                                }
-                            },
-                            modifier = Modifier.height(44.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = IosActiveBlue)
-                        ) {
-                            Text("افزودن", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                        }
-                    }
-
-                    Text("سایت‌های در حال حاضر مستقیم:", color = IosSecondaryLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-
-                    val customDirectList = directRules.filterNot { it.pattern.contains(".ir") }
-                    if (customDirectList.isEmpty() && !hasIranBypass) {
-                        Box(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("هیچ سایتی اضافه نشده است (همه از فیلترشکن رد می‌شوند)", color = IosSecondaryLabel, fontSize = 11.sp)
-                        }
-                    } else {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .heightIn(max = 180.dp)
-                                .verticalScroll(rememberScrollState()),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            customDirectList.forEach { rule ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.White.copy(alpha = 0.05f))
-                                        .padding(horizontal = 10.dp, vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(rule.pattern, color = Color.White, fontSize = 12.sp)
-                                    IconButton(
-                                        onClick = {
-                                            val updated = config.routingRules.filterNot { it == rule }
-                                            onUpdateConfig(config.copy(routingRules = updated))
-                                        },
-                                        modifier = Modifier.size(20.dp)
-                                    ) {
-                                        Icon(Icons.Default.Close, null, tint = IosErrorRed, modifier = Modifier.size(14.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    Button(
-                        onClick = onDismiss,
-                        modifier = Modifier.fillMaxWidth().height(42.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = IosGroupBg)
-                    ) {
-                        Text("بستن و ذخیره", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                    }
-                }
-            }
         }
     }
 }
@@ -1736,7 +1489,6 @@ private fun PsiphonOptionsSheet(
         ) {
             Text(strings.PSIPHON_OPTIONS_TITLE, fontWeight = FontWeight.Bold, fontSize = (18 * scaleFactor).sp, color = Color.White)
 
-            // انتخاب پروتکل لایه بیرونی (پیش‌فرض WireGuard)
             val outerOptions = listOf("WireGuard", "MASQUE", "Gool")
             val outerValues = listOf("wg", "masque", "gool")
             val currentOuter = when (config.psiphonChainOuter) {
@@ -1761,7 +1513,6 @@ private fun PsiphonOptionsSheet(
                 }
             )
 
-            // انتخاب کشور خروجی سایفون
             val availableRegions by PsiphonEgressRegistry.availableRegions.collectAsStateWithLifecycle()
             val selectedRegion = config.psiphonEgressRegion.trim().uppercase()
             val regionCodes = buildList {
