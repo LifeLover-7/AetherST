@@ -76,14 +76,6 @@ actual object ConnectionController {
         @Volatile private var isPsiphonActive = false
         private var statusJob: Job? = null
 
-        private val gamingEndpoints = listOf(
-            "162.159.193.1:2408",
-            "162.159.192.1:2408",
-            "162.159.195.1:2408",
-            "188.114.96.1:2408",
-            "188.114.97.1:2408"
-        )
-
         init {
             scope.launch {
                 Bridge.statusOverride.collect { s ->
@@ -119,10 +111,15 @@ actual object ConnectionController {
             val config = AetherConfigRepository.getInstance(getSettings(context)).config.value.effectiveZeroTrustConfig()
             var effectiveConfig = config
 
-            if (effectiveConfig.protocol == AetherProtocol.GOOL && effectiveConfig.wiwInner.isBlank()) {
-                val gamingTarget = gamingEndpoints[0]
-                effectiveConfig = effectiveConfig.copy(wiwInner = gamingTarget)
-                LogRepository.i("[Controller] GOOL Gaming mode: Inner endpoint configured to $gamingTarget (Turkey/Europe exit)")
+            // ست کردن هر دو لایه بیرونی (ایران) و درونی (ترکیه) برای پروتکل GOOL
+            if (effectiveConfig.protocol == AetherProtocol.GOOL) {
+                if (effectiveConfig.wiwOuter.isBlank()) {
+                    effectiveConfig = effectiveConfig.copy(wiwOuter = "162.159.192.1:2408")
+                }
+                if (effectiveConfig.wiwInner.isBlank()) {
+                    effectiveConfig = effectiveConfig.copy(wiwInner = "162.159.193.1:2408")
+                }
+                LogRepository.i("[Controller] GOOL mode: outer=${effectiveConfig.wiwOuter} inner=${effectiveConfig.wiwInner}")
             }
 
             if (CloakController.isSupported(config)) {
