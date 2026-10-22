@@ -258,22 +258,13 @@ import aetherst_tunnel.composeapp.generated.resources.yt
 import aetherst_tunnel.composeapp.generated.resources.za
 import aetherst_tunnel.composeapp.generated.resources.zm
 import aetherst_tunnel.composeapp.generated.resources.zw
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -287,12 +278,6 @@ actual fun CountryFlag(
     size: Dp,
     modifier: Modifier
 ) {
-    // نمایش مستقیم و رسمی پرچم جمهوری اسلامی ایران همراه با نشان رسمی
-    if (countryCode.equals("ir", ignoreCase = true)) {
-        OfficialIranFlag(size = size, modifier = modifier)
-        return
-    }
-
     val emoji = if (countryCode.length == 2) {
         val first = countryCode[0].uppercaseChar().code - 'A'.code + 0x1F1E6
         val second = countryCode[1].uppercaseChar().code - 'A'.code + 0x1F1E6
@@ -311,98 +296,6 @@ actual fun CountryFlag(
     } else {
         Box(modifier = modifier.size(size), contentAlignment = Alignment.Center) {
             Text(text = emoji, fontSize = (size.value * 0.75f).sp)
-        }
-    }
-}
-
-/**
- * پرچم رسمی جمهوری اسلامی ایران (سه رنگ سبز، سفید، سرخ با نشان رسمی الله در مرکز)
- */
-@Composable
-fun OfficialIranFlag(size: Dp, modifier: Modifier = Modifier) {
-    val greenColor = Color(0xFF239F40)
-    val whiteColor = Color(0xFFFFFFFF)
-    val redColor = Color(0xFFDA0000)
-
-    Box(
-        modifier = modifier
-            .size(size)
-            .clip(RoundedCornerShape(3.dp))
-    ) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val stripeHeight = this.size.height / 3f
-            val width = this.size.width
-
-            // ۱. نوار سبز رنگ بالا
-            drawRect(
-                color = greenColor,
-                topLeft = Offset(0f, 0f),
-                size = Size(width, stripeHeight)
-            )
-
-            // ۲. نوار سفید رنگ وسط
-            drawRect(
-                color = whiteColor,
-                topLeft = Offset(0f, stripeHeight),
-                size = Size(width, stripeHeight)
-            )
-
-            // ۳. نوار سرخ رنگ پایین
-            drawRect(
-                color = redColor,
-                topLeft = Offset(0f, stripeHeight * 2f),
-                size = Size(width, stripeHeight)
-            )
-
-            // ۴. رسم دقیق نشان رسمی جمهوری اسلامی ایران در مرکز نوار سفید
-            val cx = width / 2f
-            val cy = this.size.height / 2f
-            val r = stripeHeight * 0.42f
-
-            // ستون / شمشیر مرکزی
-            val swordPath = Path().apply {
-                moveTo(cx, cy - r)
-                lineTo(cx + r * 0.12f, cy - r * 0.65f)
-                lineTo(cx + r * 0.04f, cy + r * 0.85f)
-                lineTo(cx - r * 0.04f, cy + r * 0.85f)
-                lineTo(cx - r * 0.12f, cy - r * 0.65f)
-                close()
-            }
-            drawPath(path = swordPath, color = redColor, style = Fill)
-
-            // هلال چپ
-            val leftCrescent = Path().apply {
-                moveTo(cx - r * 0.08f, cy - r * 0.7f)
-                cubicTo(
-                    cx - r * 0.75f, cy - r * 0.4f,
-                    cx - r * 0.75f, cy + r * 0.4f,
-                    cx - r * 0.08f, cy + r * 0.7f
-                )
-                cubicTo(
-                    cx - r * 0.52f, cy + r * 0.35f,
-                    cx - r * 0.52f, cy - r * 0.35f,
-                    cx - r * 0.08f, cy - r * 0.7f
-                )
-                close()
-            }
-            drawPath(path = leftCrescent, color = redColor, style = Fill)
-
-            // هلال راست
-            val rightCrescent = Path().apply {
-                moveTo(cx + r * 0.08f, cy - r * 0.7f)
-                cubicTo(
-                    cx + r * 0.75f, cy - r * 0.4f,
-                    cx + r * 0.75f, cy + r * 0.4f,
-                    cx + r * 0.08f, cy + r * 0.7f
-                )
-                cubicTo(
-                    cx + r * 0.52f, cy + r * 0.35f,
-                    cx + r * 0.52f, cy - r * 0.35f,
-                    cx + r * 0.08f, cy - r * 0.7f
-                )
-                close()
-            }
-            drawPath(path = rightCrescent, color = redColor, style = Fill)
         }
     }
 }
