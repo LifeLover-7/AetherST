@@ -65,6 +65,7 @@ actual object ConnectionController {
         private val trafficProvider = getTrafficProvider(context)
         private val loginCodeChannel = Channel<String>(Channel.UNLIMITED)
 
+        private var connectJob: Job? = null
         private var timerJob: Job? = null
         private var baseTx = 0L
         private var baseRx = 0L
@@ -98,9 +99,27 @@ actual object ConnectionController {
         fun start() {
             scope.launch {
                 actionMutex.withLock {
-                    if (_status.value == ConnectionStatus.RUNNING || _status.value == ConnectionStatus.VALIDATING) return@withLock
+                    if (_status.value == ConnectionStatus.RUNNING ||
+                        _status.value == ConnectionStatus.STARTING ||
+                        _status.value == ConnectionStatus.VALIDATING
+                    ) return@withLock
+
+                    // اطمینان از بسته بودن هرگونه نشست قبلی که در وضعیت ERROR مانده باشد
+                    connectJob?.cancelAndJoin()
+                    doStop()
+
                     _status.value = ConnectionStatus.STARTING
-                    doStart()
+                    connectJob = scope.launch {
+                        try {
+                            doStart()
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Throwable) {
+                            LogRepository.e("[Controller] Unexpected error in doStart: ${e.message}")
+                            doStop()
+                            _status.value = ConnectionStatus.ERROR
+                        }
+                    }
                 }
             }
         }
@@ -122,7 +141,7 @@ actual object ConnectionController {
             if (CloakController.isSupported(config)) {
                 val started = runCatching { CloakController.start(context, config) }.getOrDefault(false)
                 if (started && CloakController.isRunning()) {
-                    effectiveConfig = config.copy(peer = CloakController.getEffectivePeer(config))
+                    effectiveConfig = effectiveConfig.copy(peer = CloakController.getEffectivePeer(config))
                     LogRepository.i("[Controller] Cloak active, routing via ${effectiveConfig.peer}", "Cloak")
                 }
             }
@@ -150,18 +169,25 @@ actual object ConnectionController {
                 inputProvider = { loginCodeChannel.receive() }
             )
 
-            // انتظار واقعی برای متصل شدن هسته
+            // انتظار واقعی برای متصل شدن هسته با قابلیت لغو فوری
             var coreReady = false
             for (i in 0..50) {
-                if (runner.connectionStatus.value == ConnectionStatus.RUNNING || probePort("127.0.0.1", coreSocksPort)) {
+                currentCoroutineContext().ensureActive()
+                val currentRunnerStatus = runner.connectionStatus.value
+                if (currentRunnerStatus == ConnectionStatus.RUNNING || probePort("127.0.0.1", coreSocksPort)) {
                     coreReady = true
+                    break
+                }
+                // اگر هسته متوقف شد یا خطا داد، بلافاصله از حلقه خارج شو
+                if (i > 2 && currentRunnerStatus == ConnectionStatus.ERROR) {
                     break
                 }
                 delay(300.milliseconds)
             }
 
             if (!coreReady) {
-                LogRepository.e("[Controller] Core connection timed out")
+                LogRepository.e("[Controller] Core connection timed out or failed, cleaning up...")
+                doStop()
                 _status.value = ConnectionStatus.ERROR
                 return
             }
@@ -172,7 +198,7 @@ actual object ConnectionController {
                 _status.value = ConnectionStatus.VALIDATING
                 val upstreamUrl = "http://127.0.0.1:$actualHttpPort"
                 LogRepository.i("[Controller] Chaining Psiphon over HTTP proxy $upstreamUrl", "Psiphon")
-                
+
                 val psiphonStarted = PsiphonController.start(
                     context = context,
                     config = effectiveConfig,
@@ -182,6 +208,7 @@ actual object ConnectionController {
                 if (psiphonStarted) {
                     var psiphonReady = false
                     for (i in 0..30) {
+                        currentCoroutineContext().ensureActive()
                         if (PsiphonController.isConnected() || PsiphonController.probeListening()) {
                             psiphonReady = true
                             break
@@ -200,6 +227,7 @@ actual object ConnectionController {
                 }
             }
 
+            currentCoroutineContext().ensureActive()
             activeTargetPort = effectiveTargetPort
 
             if (effectiveConfig.connectionMode == ConnectionMode.TUNNEL) {
@@ -208,7 +236,6 @@ actual object ConnectionController {
                 getSystemUtils(context).setSystemProxy("127.0.0.1", effectiveTargetPort)
             }
 
-            // فقط در صورتی وضعیت RUNNING می‌شود که واقعاً سوکت آماده باشد
             _status.value = ConnectionStatus.RUNNING
             startTimer()
         }
@@ -223,9 +250,12 @@ actual object ConnectionController {
         fun stop() {
             scope.launch {
                 actionMutex.withLock {
-                    if (_status.value == ConnectionStatus.STOPPED) return@withLock
+                    if (_status.value == ConnectionStatus.STOPPED && connectJob?.isActive != true) return@withLock
                     _status.value = ConnectionStatus.STOPPED
+                    _isWaitingForCode.value = false
                     stopTimer()
+                    connectJob?.cancelAndJoin()
+                    connectJob = null
                     doStop()
                 }
             }
@@ -237,7 +267,7 @@ actual object ConnectionController {
             statusJob = null
 
             try { PsiphonController.stop() } catch (_: Throwable) {}
-            runner.stop()
+            try { runner.stop() } catch (_: Throwable) {}
             try { CloakController.stop() } catch (_: Throwable) {}
 
             ActiveProxyProvider.psiphonProxyUrl = null
@@ -245,13 +275,13 @@ actual object ConnectionController {
 
             try { getSystemUtils(context).clearSystemProxy() } catch (_: Throwable) {}
             tunnelModeStarted = false
-            TunHelper.stop()
+            try { TunHelper.stop() } catch (_: Throwable) {}
         }
 
         private suspend fun probePort(host: String, port: Int): Boolean = withContext(Dispatchers.IO) {
             runCatching {
                 Socket().use {
-                    it.connect(InetSocketAddress(host, port), 500)
+                    it.connect(InetSocketAddress(host, port), 400)
                     true
                 }
             }.getOrDefault(false)
@@ -279,7 +309,6 @@ actual object ConnectionController {
             _sessionTraffic.value = SessionTraffic()
         }
 
-        // شمارشگر ۱۰۰٪ اختصاصی فقط برای کارت شبکه مجازی AetherST
         private fun getWintunBytes(): Pair<Long, Long> {
             return try {
                 val proc = ProcessBuilder("netsh", "interface", "ipv4", "show", "subinterfaces", "AetherST")
