@@ -113,9 +113,9 @@ actual object ConnectionController {
 
             // ست کردن هر دو لایه بیرونی (ایران) و درونی (ترکیه) برای پروتکل GOOL
             if (effectiveConfig.protocol == AetherProtocol.GOOL) {
-                if (effectiveConfig.wiwOuter.isBlank()) {
-                    effectiveConfig = effectiveConfig.copy(wiwOuter = "162.159.192.1:2408")
-                }
+    effectiveConfig = effectiveConfig.copy(wiwScan = true)
+    LogRepository.i("[Controller] GOOL mode: auto-scan enabled for clean endpoints")
+}
                 if (effectiveConfig.wiwInner.isBlank()) {
                     effectiveConfig = effectiveConfig.copy(wiwInner = "162.159.193.1:2408")
                 }
