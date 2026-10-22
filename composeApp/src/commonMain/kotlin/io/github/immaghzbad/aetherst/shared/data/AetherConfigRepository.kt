@@ -459,25 +459,15 @@ class AetherConfigRepository private constructor(private val settings: Settings)
     }
 
     fun getFullConfigJson(): String {
-        val sanitized = _config.value.copy(
-            excludedPackages = emptySet(),
-            blockedPackages = emptySet(),
-            tunneledPackages = emptySet(),
-            routingRules = emptyList()
-        )
-        return Json.encodeToString(sanitized)
+        // ذخیره ۱۰۰٪ واقعی تمام تنظیمات شامل برنامه‌ها و روت‌های سایت‌ها
+        return Json.encodeToString(_config.value)
     }
 
     fun restoreFullConfig(json: String): Boolean {
         return try {
-            val restored = Json.decodeFromString<AetherConfig>(json).copy(
-                excludedPackages = emptySet(),
-                blockedPackages = emptySet(),
-                tunneledPackages = emptySet(),
-                routingRules = emptyList()
-            )
+            val restored = Json.decodeFromString<AetherConfig>(json)
             updateConfig(restored)
-            LogRepository.i("Full configuration restored from backup")
+            LogRepository.i("Full configuration restored from backup successfully")
             true
         } catch (_: Exception) {
             false
