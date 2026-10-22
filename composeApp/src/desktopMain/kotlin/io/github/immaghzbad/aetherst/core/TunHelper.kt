@@ -39,7 +39,6 @@ object TunHelper {
             val dataDir = getSystemUtils(context).getFilesDir()
             val dataDirFile = File(dataDir)
 
-            // اتصال مستقیم Wintun به پورت مستقیم هدف (سایفون 3080 یا Aether)
             File(dataDir, HEV_YAML).writeText(buildHevConfig(socksTargetPort, safeMtu))
             writeParams(socksTargetPort, dataDirFile, safeMtu)
             File(dataDir, STOP_FLAG).delete()
@@ -167,15 +166,18 @@ object TunHelper {
             |    ${'$'}r2 = route add 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1
             |    L "route add: ${'$'}r1"
             |    L "route add: ${'$'}r2"
+            |    # مسدود کردن نشت ترافیک IPv6
             |    try {
             |        New-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -Direction Outbound -Action Block -RemoteAddress '::/0' -ErrorAction SilentlyContinue | Out-Null
             |        L "IPv6 leak protection activated"
             |    } catch {}
+            |    # پاک‌سازی کش DNS قبلی و هدایت به سرور مطمئن برای رفع قفل کودک
             |    try {
+            |        Clear-DnsClientCache -ErrorAction SilentlyContinue | Out-Null
             |        Get-NetAdapter | Where-Object { ${'$'}_.InterfaceIndex -ne ${'$'}ifIndex -and ${'$'}_.Status -eq 'Up' } | ForEach-Object {
             |            Set-DnsClientServerAddress -InterfaceIndex ${'$'}_.InterfaceIndex -ServerAddresses '1.1.1.1','1.0.0.1' -ErrorAction SilentlyContinue
             |        }
-            |        L "DNS leak protection applied to physical adapters"
+            |        L "DNS cache cleared & leak protection applied to physical adapters"
             |    } catch {}
             |}
             |function Test-TunRoutes {
@@ -233,7 +235,9 @@ object TunHelper {
             |        if (${'$'}line) { ${'$'}toks = ${'$'}line.ToString().Trim() -split '\s+'; if (${'$'}toks.Count -ge 2) { Add-TunRoutes ${'$'}toks[0] } }
             |    }
             |}
+            |# پاک‌سازی کامل هنگام قطع اتصال
             |try { Remove-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -ErrorAction SilentlyContinue | Out-Null } catch {}
+            |try { Clear-DnsClientCache -ErrorAction SilentlyContinue | Out-Null } catch {}
             |try { Get-NetAdapter | Where-Object { ${'$'}_.Status -eq 'Up' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex ${'$'}_.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue } } catch {}
             |route delete 0.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
             |route delete 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
