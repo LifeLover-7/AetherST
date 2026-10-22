@@ -336,33 +336,69 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
     } }
 }
 
-@Composable private fun ConnectionPage(config: AetherConfig, isAndroid: Boolean, onUpdateConfig: (AetherConfig) -> Unit, onUpdateTunnelEngine: (TunnelEngine) -> Unit, onOpenSplitTunneling: () -> Unit, onOpenRoutingRules: () -> Unit) {
+@Composable private fun ConnectionPage(
+    config: AetherConfig,
+    isAndroid: Boolean,
+    onUpdateConfig: (AetherConfig) -> Unit,
+    onUpdateTunnelEngine: (TunnelEngine) -> Unit,
+    onOpenSplitTunneling: () -> Unit,
+    onOpenRoutingRules: () -> Unit
+) {
     val strings = LocalAppStrings.current
     IosGroupCard { Column {
-        val opts = if (isAndroid) listOf(strings.TUN_MODE, strings.PROXY_ONLY) else if (isDesktop) listOf(strings.TUN_MODE_GLOBAL, strings.SYSTEM_PROXY, strings.PROXY_ONLY) else listOf(strings.TUN_MODE_GLOBAL, strings.SYSTEM_PROXY, strings.PROXY_ONLY)
-        IosPickerRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.statusConnected,             title = strings.CONNECTION_MODE, value = when (config.connectionMode) { ConnectionMode.TUNNEL -> if (isAndroid) strings.TUN_MODE else strings.TUN_MODE_GLOBAL; ConnectionMode.SYSTEM_PROXY -> strings.SYSTEM_PROXY; else -> strings.PROXY_ONLY }, options = opts, onOptionSelected = { val m = if (isAndroid) { if (it == 0) ConnectionMode.TUNNEL else ConnectionMode.PROXY_ONLY } else if (isDesktop) { when (it) { 0 -> ConnectionMode.TUNNEL; 1 -> ConnectionMode.SYSTEM_PROXY; else -> ConnectionMode.PROXY_ONLY } } else { when (it) { 0 -> ConnectionMode.TUNNEL; 1 -> ConnectionMode.SYSTEM_PROXY; else -> ConnectionMode.PROXY_ONLY } }; onUpdateConfig(config.copy(connectionMode = m)) })
-        if (config.connectionMode == ConnectionMode.TUNNEL) {
-            AppDivider(); IosPickerRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.accentVariant, title = strings.TUNNEL_ENGINE, value = config.tunnelEngine.displayName, options = TunnelEngine.entries.map { it.displayName }, onOptionSelected = { onUpdateTunnelEngine(TunnelEngine.entries[it]) })
-            if (!isDesktop) {
-                AppDivider()
-                IosSwitchRow(icon = Icons.Default.AllInclusive, iconBg = IosActiveBlue, title = strings.TUNNEL_WHOLE_DEVICE, subtitle = strings.TUNNEL_WHOLE_DEVICE_SUB, checked = config.tunnelAllApps, onCheckedChange = { onUpdateConfig(config.copy(tunnelAllApps = it)) }, testTag = "switch_tunnel_all")
-                AppDivider()
-                IosPickerRow(icon = Icons.Default.Tune, iconBg = AppPalette.accentVariant, title = strings.SPLIT_TUNNELING, value = "${config.tunneledPackages.size + config.blockedPackages.size} ${strings.SPLIT_TUNNELING_CUSTOM}", options = emptyList(), onOptionSelected = {}, onClickOverride = onOpenSplitTunneling, enabled = true)
+        val opts = if (isAndroid) listOf(strings.TUN_MODE, strings.PROXY_ONLY) else listOf(strings.TUN_MODE_GLOBAL, strings.SYSTEM_PROXY, strings.PROXY_ONLY)
+        IosPickerRow(
+            icon = Icons.Default.VpnLock,
+            iconBg = AppPalette.statusConnected,
+            title = strings.CONNECTION_MODE,
+            value = when (config.connectionMode) {
+                ConnectionMode.TUNNEL -> if (isAndroid) strings.TUN_MODE else strings.TUN_MODE_GLOBAL
+                ConnectionMode.SYSTEM_PROXY -> strings.SYSTEM_PROXY
+                else -> strings.PROXY_ONLY
+            },
+            options = opts,
+            onOptionSelected = {
+                val m = if (isAndroid) {
+                    if (it == 0) ConnectionMode.TUNNEL else ConnectionMode.PROXY_ONLY
+                } else {
+                    when (it) { 0 -> ConnectionMode.TUNNEL; 1 -> ConnectionMode.SYSTEM_PROXY; else -> ConnectionMode.PROXY_ONLY }
+                }
+                onUpdateConfig(config.copy(connectionMode = m))
             }
+        )
+        if (config.connectionMode == ConnectionMode.TUNNEL) {
+            AppDivider()
+            IosPickerRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.accentVariant, title = strings.TUNNEL_ENGINE, value = config.tunnelEngine.displayName, options = TunnelEngine.entries.map { it.displayName }, onOptionSelected = { onUpdateTunnelEngine(TunnelEngine.entries[it]) })
+            
+            // فعال‌سازی اسپلیت تونل برنامه‌ها برای هر دو پلتفرم ویندوز و اندروید
+            AppDivider()
+            IosSwitchRow(icon = Icons.Default.AllInclusive, iconBg = IosActiveBlue, title = strings.TUNNEL_WHOLE_DEVICE, subtitle = strings.TUNNEL_WHOLE_DEVICE_SUB, checked = config.tunnelAllApps, onCheckedChange = { onUpdateConfig(config.copy(tunnelAllApps = it)) }, testTag = "switch_tunnel_all")
+            AppDivider()
+            IosPickerRow(icon = Icons.Default.Tune, iconBg = AppPalette.accentVariant, title = strings.SPLIT_TUNNELING, value = "${config.tunneledPackages.size + config.blockedPackages.size} ${strings.SPLIT_TUNNELING_CUSTOM}", options = emptyList(), onOptionSelected = {}, onClickOverride = onOpenSplitTunneling, enabled = true)
             AppDivider()
         }
+        
+        // اسپلیت تونل سایت‌ها (Domain & IP Routing)
         IosPickerRow(icon = Icons.AutoMirrored.Filled.AltRoute, iconBg = IosActiveBlue, title = strings.DOMAIN_IP_ROUTING, value = "${config.routingRules.size} ${strings.ROUTING_RULES_TITLE}", options = emptyList(), onOptionSelected = {}, onClickOverride = onOpenRoutingRules)
+        
+        // فعال‌سازی انتخاب زنجیره سایفون/تور برای همه پلتفرم‌ها
+        AppDivider()
+        val providerOptions = listOf("Psiphon", "Tor")
+        val providerIdx = if (config.chainProvider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.TOR) 1 else 0
+        IosPickerRow(icon = Icons.Default.Shield, iconBg = AppPalette.accentVariant, title = strings.CHAIN_PROVIDER, value = providerOptions[providerIdx], options = providerOptions, onOptionSelected = { idx ->
+            val provider = if (idx == 1) io.github.immaghzbad.aetherst.shared.model.ChainProvider.TOR else io.github.immaghzbad.aetherst.shared.model.ChainProvider.PSIPHON
+            onUpdateConfig(config.copy(chainProvider = provider, psiphonEnabled = if (provider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.TOR) false else config.psiphonEnabled, torEnabled = if (provider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.PSIPHON) false else config.torEnabled))
+        })
+        if (config.chainProvider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.PSIPHON) {
+            AppDivider()
+            IosSwitchRow(icon = Icons.Default.Shield, iconBg = IosActiveGreen, title = strings.PSIPHON_ONLY, subtitle = strings.PSIPHON_ONLY_SUB, checked = config.psiphonOnly, onCheckedChange = { onUpdateConfig(config.copy(psiphonOnly = it)) }, testTag = "switch_psiphon_only")
+        }
+
         if (isAndroid) {
             AppDivider()
-            val providerOptions = listOf("Psiphon", "Tor")
-            val providerIdx = if (config.chainProvider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.TOR) 1 else 0
-            IosPickerRow(icon = Icons.Default.Shield, iconBg = AppPalette.accentVariant, title = strings.CHAIN_PROVIDER, value = providerOptions[providerIdx], options = providerOptions, onOptionSelected = { idx -> val provider = if (idx == 1) io.github.immaghzbad.aetherst.shared.model.ChainProvider.TOR else io.github.immaghzbad.aetherst.shared.model.ChainProvider.PSIPHON; onUpdateConfig(config.copy(chainProvider = provider, psiphonEnabled = if (provider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.TOR) false else config.psiphonEnabled, torEnabled = if (provider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.PSIPHON) false else config.torEnabled)) })
-            if (config.chainProvider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.PSIPHON) {
-                AppDivider()
-                IosSwitchRow(icon = Icons.Default.Shield, iconBg = IosActiveGreen, title = strings.PSIPHON_ONLY, subtitle = strings.PSIPHON_ONLY_SUB, checked = config.psiphonOnly, onCheckedChange = { onUpdateConfig(config.copy(psiphonOnly = it)) }, testTag = "switch_psiphon_only")
-            }
+            IosSwitchRow(icon = Icons.Default.Share, iconBg = AppPalette.accentVariantAlt, title = strings.SHARE_HOTSPOT, subtitle = strings.SHARE_HOTSPOT_SUB, checked = config.shareHotspot, onCheckedChange = { onUpdateConfig(config.copy(shareHotspot = it)) }, testTag = "switch_share_hotspot")
+            if (config.shareHotspot) HotspotInfo(config)
         }
-        if (isAndroid) { AppDivider(); IosSwitchRow(icon = Icons.Default.Share, iconBg = AppPalette.accentVariantAlt, title = strings.SHARE_HOTSPOT, subtitle = strings.SHARE_HOTSPOT_SUB, checked = config.shareHotspot, onCheckedChange = { onUpdateConfig(config.copy(shareHotspot = it)) }, testTag = "switch_share_hotspot"); if (config.shareHotspot) HotspotInfo(config) }
     } }
 }
 
@@ -499,7 +535,7 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
     IosGroupCard { Column {
         Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) { IosIconBadge(icon = Icons.Default.Language, backgroundColor = IosActiveBlue); Spacer(modifier = Modifier.width(12.dp)); IosInputField(label = strings.SOCKS5_HOST, value = config.socksHost, onValueChange = { onUpdateConfig(config.copy(socksHost = it)) }, modifier = Modifier.weight(1f), placeholder = "127.0.0.1", testTag = "socks_host_input"); Spacer(modifier = Modifier.width(10.dp)); IosInputField(label = strings.SOCKS_PORT, value = config.socksPort, onValueChange = { onUpdateConfig(config.copy(socksPort = it)) }, modifier = Modifier.width(75.dp), placeholder = "1819", keyboardType = KeyboardType.Number, testTag = "socks_port_input"); Spacer(modifier = Modifier.width(8.dp)); IosInputField(label = strings.HTTP_PORT, value = config.httpPort, onValueChange = { onUpdateConfig(config.copy(httpPort = it)) }, modifier = Modifier.width(75.dp), placeholder = "1820", keyboardType = KeyboardType.Number, testTag = "http_port_input") }
         AppDivider(); androidx.compose.foundation.layout.Box(modifier = if (httpLocked) Modifier.fillMaxWidth().clickable { onShowToast(httpLockToast, true) } else Modifier.fillMaxWidth()) { IosSwitchRow(icon = Icons.Default.Http, iconBg = IosActiveBlue, title = strings.INTERNAL_HTTP_PROXY, subtitle = if (httpLocked) httpLockSub else strings.INTERNAL_HTTP_PROXY_SUB, checked = config.httpProxyEnabled, enabled = !httpLocked, onCheckedChange = { if (httpLocked && !it) { onShowToast(httpLockToast, true); return@IosSwitchRow }; onUpdateConfig(config.copy(httpProxyEnabled = it)) }, testTag = "switch_http_proxy_enabled") }; AppDivider()
-        IosInputFieldRow(icon = Icons.Default.Code, iconBg = IosSecondaryLabel, label = strings.TLS_KEY_GROUPS, value = config.tlsGroups, onValueChange = { onUpdateConfig(config.copy(tlsGroups = it)) }, placeholder = "P-256:X25519:P-384",         testTag = "tls_groups_input"); AppDivider()
+        IosInputFieldRow(icon = Icons.Default.Code, iconBg = IosSecondaryLabel, label = strings.TLS_KEY_GROUPS, value = config.tlsGroups, onValueChange = { onUpdateConfig(config.copy(tlsGroups = it)) }, placeholder = "P-256:X25519:P-384", testTag = "tls_groups_input"); AppDivider()
         IosSwitchRow(icon = Icons.Default.Dns, iconBg = IosActiveBlue, title = strings.CUSTOM_DNS, subtitle = strings.CUSTOM_DNS_SUB, checked = config.dnsEnabled, onCheckedChange = { onUpdateConfig(config.copy(dnsEnabled = it, dnsList = if (it) config.dnsList.ifBlank { "1.1.1.1,1.0.0.1" } else config.dnsList)) }, testTag = "switch_custom_dns"); AppDivider()
         if (config.dnsEnabled) { Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.Bottom) { Row(modifier = Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) { IosIconBadge(icon = Icons.Default.Dns, backgroundColor = IosActiveBlue); Spacer(modifier = Modifier.width(12.dp)); IosInputField(label = if (isDesktop) strings.TUNNEL_DNS_DESKTOP else strings.TUNNEL_DNS, value = config.dnsList, onValueChange = { onUpdateConfig(config.copy(dnsList = it.replace(Regex("\\s*,\\s*"), ","))) }, modifier = Modifier.weight(1f), placeholder = "1.1.1.1,1.0.0.1", testTag = "dns_list_input") }; Spacer(modifier = Modifier.width(8.dp)); Button(onClick = onOpenDnsOptimizer, modifier = Modifier.height(46.dp), shape = RoundedCornerShape(10.dp), colors = ButtonDefaults.buttonColors(containerColor = IosActiveBlue.copy(alpha = 0.15f), contentColor = IosActiveBlue), contentPadding = PaddingValues(horizontal = 16.dp)) { Text(strings.DNS_OPTIMIZE, fontSize = 13.sp, fontWeight = FontWeight.Bold) } }; AppDivider() }
         if (isDesktop) {
