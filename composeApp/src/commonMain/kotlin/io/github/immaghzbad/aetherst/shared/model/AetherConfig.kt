@@ -4,6 +4,9 @@ import io.github.immaghzbad.aetherst.platform.isWindows
 import io.github.immaghzbad.aetherst.shared.i18n.AppStrings
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.Serializable
 import java.util.Locale
 
@@ -259,20 +262,12 @@ data class AetherConfig(
     fun zeroTrustError(): String? {
         if (protocol != AetherProtocol.ZERO_TRUST) return null
         if (teamName.isBlank()) return "Organization Team Name is required for Zero Trust"
-
         val hasEmail = accessEmail.isNotBlank()
         val hasServiceToken = accessId.isNotBlank() || accessSecret.isNotBlank()
         val hasToken = accessToken.isNotBlank()
-
-        if (!hasEmail && !hasServiceToken && !hasToken) {
-            return "Provide one authentication method: Access Email, Service Token, or Access Token"
-        }
-        if (hasServiceToken && (accessId.isBlank() || accessSecret.isBlank())) {
-            return "Service Token requires both Access Client ID and Access Client Secret"
-        }
-        val providedCount = listOf(hasEmail, hasServiceToken, hasToken).count { it }
-        if (providedCount > 1) return "Use only one authentication method at a time"
-
+        if (!hasEmail && !hasServiceToken && !hasToken) return "Provide one authentication method: Access Email, Service Token, or Access Token"
+        if (hasServiceToken && (accessId.isBlank() || accessSecret.isBlank())) return "Service Token requires both Access Client ID and Access Client Secret"
+        if (listOf(hasEmail, hasServiceToken, hasToken).count { it } > 1) return "Use only one authentication method at a time"
         return null
     }
 
@@ -282,25 +277,16 @@ data class AetherConfig(
         val hasEmail = accessEmail.isNotBlank()
         val hasServiceToken = accessId.isNotBlank() || accessSecret.isNotBlank()
         val hasToken = accessToken.isNotBlank()
-        if (!hasEmail && !hasServiceToken && !hasToken) {
-            return strings.TOAST_ZT_PROVIDE_ONE_AUTH
-        }
-        if (hasServiceToken && (accessId.isBlank() || accessSecret.isBlank())) {
-            return strings.TOAST_ZT_SERVICE_TOKEN_REQUIRES
-        }
-        val providedCount = listOf(hasEmail, hasServiceToken, hasToken).count { it }
-        if (providedCount > 1) return strings.TOAST_ZT_ONLY_ONE_AUTH
+        if (!hasEmail && !hasServiceToken && !hasToken) return strings.TOAST_ZT_PROVIDE_ONE_AUTH
+        if (hasServiceToken && (accessId.isBlank() || accessSecret.isBlank())) return strings.TOAST_ZT_SERVICE_TOKEN_REQUIRES
+        if (listOf(hasEmail, hasServiceToken, hasToken).count { it } > 1) return strings.TOAST_ZT_ONLY_ONE_AUTH
         return null
     }
 
     fun effectiveZeroTrustConfig(): AetherConfig {
         if (protocol != AetherProtocol.ZERO_TRUST) return this
-        if (!ztStaySignedIn) {
-            return this.copy(accessToken = "", accessId = "", accessSecret = "")
-        }
-        if (accessToken.isNotBlank() && ztTokenExpiry != 0L && ztTokenExpiry < System.currentTimeMillis()) {
-            return this.copy(accessToken = "")
-        }
+        if (!ztStaySignedIn) return this.copy(accessToken = "", accessId = "", accessSecret = "")
+        if (accessToken.isNotBlank() && ztTokenExpiry != 0L && ztTokenExpiry < System.currentTimeMillis()) return this.copy(accessToken = "")
         return this
     }
 
@@ -313,24 +299,35 @@ data class AetherConfig(
             val rem = p.length % 4
             if (rem != 0) p = p.padEnd(p.length + (4 - rem), '=')
             val json = Base64.UrlSafe.decode(p).decodeToString()
-            val m = Regex("\"exp\"\\s*:\\s*(\\d+)").find(json)
-            m?.groupValues?.get(1)?.toLongOrNull()?.times(1000) ?: 0
-        } catch (_: Exception) {
-            0
-        }
+            Regex("\"exp\"\\s*:\\s*(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull()?.times(1000) ?: 0
+        } catch (_: Exception) { 0 }
     }
 
     fun resolvedLanguage(): String {
         if (appLanguage != "auto") return appLanguage
         return try {
-            val sys = Locale.getDefault().language.lowercase()
-            if (sys.startsWith("fa")) "fa" else "en"
+            if (Locale.getDefault().language.lowercase().startsWith("fa")) "fa" else "en"
         } catch (_: Exception) { "en" }
     }
 
     fun effectiveIpMode(): AetherIpMode = if (ipMode == AetherIpMode.AUTO) AetherIpMode.DUAL else ipMode
-
     fun isPsiphonActive(): Boolean = chainProvider == ChainProvider.PSIPHON && psiphonEnabled
-
     fun isTorActive(): Boolean = chainProvider == ChainProvider.TOR && torEnabled
+}
+
+object SplitTunnelAppManager {
+    private val _customApps = MutableStateFlow<List<AppInfo>>(emptyList())
+    val customApps: StateFlow<List<AppInfo>> = _customApps.asStateFlow()
+
+    private val _removedPackages = MutableStateFlow<Set<String>>(emptySet())
+    val removedPackages: StateFlow<Set<String>> = _removedPackages.asStateFlow()
+
+    var onPickDesktopApp: (((AppInfo?) -> Unit) -> Unit)? = null
+    var onRemoveApp: ((String) -> Unit)? = null
+    var onRestoreRemovedApps: (() -> Unit)? = null
+
+    fun setState(custom: List<AppInfo>, removed: Set<String>) {
+        _customApps.value = custom
+        _removedPackages.value = removed
+    }
 }
