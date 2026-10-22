@@ -3,7 +3,6 @@ package io.github.immaghzbad.aetherst.platform
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -18,8 +17,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.compose.ui.unit.dp
 import io.github.immaghzbad.aetherst.shared.model.AppInfo
+import io.github.immaghzbad.aetherst.shared.model.SplitTunnelAppManager
 import io.github.immaghzbad.aetherst.shared.core.ConnectionController
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import kotlin.system.exitProcess
@@ -28,62 +31,29 @@ actual class PlatformContext
 
 class DesktopVpnController(private val context: PlatformContext) : VpnController {
     private val connectionController get() = ConnectionController.getImpl(context)
-
-    override fun startVpn() {
-        connectionController.start()
-    }
-
-    override fun stopVpn() {
-        connectionController.stop()
-    }
-
-    override fun restartVpn() {
-        connectionController.stop()
-        connectionController.start()
-    }
-
-    override fun startProxy() {
-        connectionController.start()
-    }
-
-    override fun stopProxy() {
-        connectionController.stop()
-    }
-
-    override fun restartProxy() {
-        connectionController.stop()
-        connectionController.start()
-    }
-
-    override fun submitLoginCode(code: String) {
-        ConnectionController.submitLoginCode(code)
-    }
-
+    override fun startVpn() = connectionController.start()
+    override fun stopVpn() = connectionController.stop()
+    override fun restartVpn() { connectionController.stop(); connectionController.start() }
+    override fun startProxy() = connectionController.start()
+    override fun stopProxy() = connectionController.stop()
+    override fun restartProxy() { connectionController.stop(); connectionController.start() }
+    override fun submitLoginCode(code: String) = ConnectionController.submitLoginCode(code)
     override fun prepareVpn(onPermissionRequired: () -> Unit): Boolean = true
-
     override fun isVpnPrepared(): Boolean = true
 }
 
 class DesktopTrafficProvider : TrafficProvider {
     private var cachedTx = 0L
     private var cachedRx = 0L
-
-    override fun getTxBytes(): Long {
-        updateStats()
-        return cachedTx
-    }
-    override fun getRxBytes(): Long {
-        updateStats()
-        return cachedRx
-    }
+    override fun getTxBytes(): Long { updateStats(); return cachedTx }
+    override fun getRxBytes(): Long { updateStats(); return cachedRx }
 
     private fun updateStats() {
         try {
             val isWindows = System.getProperty("os.name").lowercase().contains("win")
             if (isWindows) {
                 val process = ProcessBuilder("netstat", "-e").start()
-                val reader = process.inputStream.bufferedReader()
-                reader.useLines { lines ->
+                process.inputStream.bufferedReader().useLines { lines ->
                     for (line in lines) {
                         val parts = line.trim().split(Regex("\\s+"))
                         if (parts.size >= 3) {
@@ -92,38 +62,128 @@ class DesktopTrafficProvider : TrafficProvider {
                             if (rxStr.isNotEmpty() && txStr.isNotEmpty()) {
                                 val rx = rxStr.toLongOrNull() ?: 0L
                                 val tx = txStr.toLongOrNull() ?: 0L
-                                if (rx > 0 || tx > 0) {
-                                    cachedRx = rx
-                                    cachedTx = tx
-                                    break
-                                }
+                                if (rx > 0 || tx > 0) { cachedRx = rx; cachedTx = tx; break }
                             }
                         }
                     }
                 }
-            } else {
-                val proc = ProcessBuilder("cat", "/proc/net/dev").start()
-                val reader = proc.inputStream.bufferedReader()
-                var totalRx = 0L
-                var totalTx = 0L
-                reader.useLines { lines ->
-                    lines.drop(2).forEach { line ->
-                        val parts = line.trim().split(Regex(":?\\s+"))
-                        if (parts.size >= 10) {
-                            totalRx += parts[1].toLongOrNull() ?: 0L
-                            totalTx += parts[9].toLongOrNull() ?: 0L
-                        }
-                    }
-                }
-                cachedRx = totalRx
-                cachedTx = totalTx
             }
         } catch (_: Exception) {}
     }
 }
 
 class DesktopAppInfoProvider : AppInfoProvider {
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val filesDir: String by lazy { DesktopSystemUtils().getFilesDir() }
+    private val customAppsFile: File by lazy { File(filesDir, "custom_split_apps.txt") }
+    private val removedAppsFile: File by lazy { File(filesDir, "removed_split_apps.txt") }
+
+    init {
+        loadSavedCustomAndRemovedApps()
+        SplitTunnelAppManager.onPickDesktopApp = { onResult ->
+            ioScope.launch {
+                val picked = pickWindowsAppDialog()
+                if (picked != null) {
+                    saveCustomApp(picked)
+                }
+                onResult(picked)
+            }
+        }
+        SplitTunnelAppManager.onRemoveApp = { packageName ->
+            ioScope.launch { removeAppFromList(packageName) }
+        }
+        SplitTunnelAppManager.onRestoreRemovedApps = {
+            ioScope.launch { restoreAllRemovedApps() }
+        }
+    }
+
+    private fun loadSavedCustomAndRemovedApps() {
+        val customList = mutableListOf<AppInfo>()
+        if (customAppsFile.exists()) {
+            runCatching {
+                customAppsFile.readLines().forEach { line ->
+                    val parts = line.split("|", limit = 2)
+                    if (parts.size == 2 && parts[0].isNotBlank() && parts[1].isNotBlank()) {
+                        customList.add(AppInfo(parts[0].trim(), parts[1].trim(), parts[1].trim(), false))
+                    }
+                }
+            }
+        }
+        val removedSet = mutableSetOf<String>()
+        if (removedAppsFile.exists()) {
+            runCatching {
+                removedAppsFile.readLines().filter { it.isNotBlank() }.forEach { removedSet.add(it.trim()) }
+            }
+        }
+        SplitTunnelAppManager.setState(customList, removedSet)
+    }
+
+    private fun saveCustomApp(app: AppInfo) {
+        val currentCustom = SplitTunnelAppManager.customApps.value.toMutableList()
+        val currentRemoved = SplitTunnelAppManager.removedPackages.value.toMutableSet()
+        currentRemoved.remove(app.packageName)
+        if (currentCustom.none { it.packageName.equals(app.packageName, ignoreCase = true) }) {
+            currentCustom.add(0, app)
+        }
+        persistState(currentCustom, currentRemoved)
+    }
+
+    private fun removeAppFromList(packageName: String) {
+        val currentCustom = SplitTunnelAppManager.customApps.value.filterNot {
+            it.packageName.equals(packageName, ignoreCase = true)
+        }
+        val currentRemoved = SplitTunnelAppManager.removedPackages.value.toMutableSet()
+        currentRemoved.add(packageName)
+        persistState(currentCustom, currentRemoved)
+    }
+
+    private fun restoreAllRemovedApps() {
+        val currentCustom = SplitTunnelAppManager.customApps.value
+        persistState(currentCustom, emptySet())
+    }
+
+    private fun persistState(custom: List<AppInfo>, removed: Set<String>) {
+        runCatching {
+            customAppsFile.writeText(custom.joinToString("\n") { "${it.name}|${it.packageName}" })
+            removedAppsFile.writeText(removed.joinToString("\n"))
+        }
+        SplitTunnelAppManager.setState(custom, removed)
+    }
+
+    private fun pickWindowsAppDialog(): AppInfo? {
+        return try {
+            val fd = java.awt.FileDialog(null as java.awt.Frame?, "انتخاب فایل اجرایی برنامه (*.exe)", java.awt.FileDialog.LOAD)
+            fd.file = "*.exe;*.lnk"
+            fd.isVisible = true
+            val dir = fd.directory ?: return null
+            val file = fd.file ?: return null
+            val selectedFile = File(dir, file)
+            if (!selectedFile.exists()) return null
+
+            val resolvedPath = if (selectedFile.extension.equals("lnk", ignoreCase = true)) {
+                resolveLnkTarget(selectedFile.absolutePath) ?: selectedFile.absolutePath
+            } else {
+                selectedFile.absolutePath
+            }
+            val displayName = selectedFile.nameWithoutExtension
+                .replace("-", " ")
+                .replace("_", " ")
+                .trim()
+                .ifEmpty { File(resolvedPath).nameWithoutExtension }
+
+            AppInfo(
+                name = displayName,
+                packageName = resolvedPath,
+                icon = resolvedPath,
+                isSystemApp = false
+            )
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     override suspend fun getInstalledApps(): List<AppInfo> = withContext(Dispatchers.IO) {
+        loadSavedCustomAndRemovedApps()
         val apps = mutableListOf<AppInfo>()
         try {
             val isWindows = System.getProperty("os.name").lowercase().contains("win")
@@ -187,36 +247,6 @@ class DesktopAppInfoProvider : AppInfoProvider {
                     addApp(displayName, path, if (File(path).exists()) path else null, publisher)
                 }
             } catch (_: Exception) {}
-            try {
-                val process = ProcessBuilder("powershell", "-NoProfile", "-Command", "Get-StartApps | ForEach-Object { \"${'$'}(${'$'}_.Name)|${'$'}(${'$'}_.AppID)\" }").start()
-                val lines = process.inputStream.bufferedReader().readLines()
-                process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
-                for (line in lines) {
-                    if (line.isBlank() || !line.contains("|")) continue
-                    val parts = line.split("|", limit = 2)
-                    val name = parts[0].trim()
-                    val appId = parts.getOrNull(1)?.trim() ?: ""
-                    if (name.isNotEmpty() && appId.isNotEmpty()) {
-                        val sys = name.lowercase().contains("microsoft") || appId.lowercase().contains("microsoft") || appId.lowercase().contains("windows")
-                        addApp(name, appId, null, if (sys) "Microsoft" else null)
-                    }
-                }
-            } catch (_: Exception) {}
-            if (apps.isEmpty()) {
-                val commonPaths = listOf(
-                    System.getenv("ProgramFiles"),
-                    System.getenv("ProgramFiles(x86)")
-                ).filterNotNull()
-                for (rootPath in commonPaths) {
-                    val root = File(rootPath)
-                    if (root.exists()) {
-                        root.listFiles()?.filter { it.isDirectory }?.forEach { dir ->
-                            val exe = dir.walkTopDown().maxDepth(2).firstOrNull { it.isFile && it.extension.equals("exe", true) && !it.name.lowercase().contains("uninstall") }
-                            addApp(dir.name, exe?.absolutePath ?: dir.absolutePath, exe?.absolutePath)
-                        }
-                    }
-                }
-            }
         } catch (_: Exception) {}
         if (apps.isEmpty()) {
             apps.add(AppInfo("Web Browser (Default)", "browser", null, false))
@@ -232,11 +262,7 @@ class DesktopSystemUtils : SystemUtils {
     override fun getFilesDir(): String {
         val appName = "AetherST-Tunnel"
         val isWindows = System.getProperty("os.name").lowercase().contains("win")
-        val baseDir = if (isWindows) {
-            System.getenv("AppData") ?: System.getProperty("user.home")
-        } else {
-            System.getProperty("user.home")
-        }
+        val baseDir = if (isWindows) System.getenv("AppData") ?: System.getProperty("user.home") else System.getProperty("user.home")
         val dir = File(baseDir, appName)
         if (!dir.exists()) dir.mkdirs()
         return dir.absolutePath
@@ -247,20 +273,14 @@ class DesktopSystemUtils : SystemUtils {
         return try {
             val props = java.util.Properties()
             val stream = this::class.java.classLoader.getResourceAsStream("app.properties")
-            if (stream != null) {
-                stream.use { props.load(it) }
-                props.getProperty("app.version", "1.1.1")
-            } else "1.1.1"
+            if (stream != null) { stream.use { props.load(it) }; props.getProperty("app.version", "1.1.1") } else "1.1.1"
         } catch (_: Exception) { "1.1.1" }
     }
     override fun getAppVersionCode(): Int {
         return try {
             val props = java.util.Properties()
             val stream = this::class.java.classLoader.getResourceAsStream("app.properties")
-            if (stream != null) {
-                stream.use { props.load(it) }
-                props.getProperty("app.version_code", props.getProperty("app.versionCode", "1")).toIntOrNull() ?: 1
-            } else 1
+            if (stream != null) { stream.use { props.load(it) }; props.getProperty("app.version_code", props.getProperty("app.versionCode", "1")).toIntOrNull() ?: 1 } else 1
         } catch (_: Exception) { 1 }
     }
     override fun exitApp() {
@@ -270,28 +290,15 @@ class DesktopSystemUtils : SystemUtils {
         } catch (_: Exception) {}
         exitProcess(0)
     }
-
-    override fun readLastCrashLog(): String? {
-        return try {
-            val file = File(System.getProperty("java.io.tmpdir"), "last_crash.log")
-            if (file.exists()) file.readText() else null
-        } catch (_: Exception) {
-            null
-        }
-    }
-
-    override fun clearCrashLog() {
-        try {
-            File(System.getProperty("java.io.tmpdir"), "last_crash.log").delete()
-        } catch (_: Exception) {
-        }
-    }
-
+    override fun readLastCrashLog(): String? = runCatching {
+        val file = File(System.getProperty("java.io.tmpdir"), "last_crash.log")
+        if (file.exists()) file.readText() else null
+    }.getOrNull()
+    override fun clearCrashLog() { runCatching { File(System.getProperty("java.io.tmpdir"), "last_crash.log").delete() } }
     override fun copyToClipboard(text: String) {
         val selection = java.awt.datatransfer.StringSelection(text)
         java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
     }
-
     override fun requestNotificationPermission() {}
     override fun requestBatteryOptimization() {}
     override fun openVpnSettings() {}
@@ -303,15 +310,8 @@ class DesktopSystemUtils : SystemUtils {
             fd.isVisible = true
             val dir = fd.directory
             val file = fd.file
-            if (dir != null && file != null) {
-                File(dir, file).writeText(content)
-                onResult(true)
-            } else {
-                onResult(false)
-            }
-        } catch (_: Exception) {
-            onResult(false)
-        }
+            if (dir != null && file != null) { File(dir, file).writeText(content); onResult(true) } else onResult(false)
+        } catch (_: Exception) { onResult(false) }
     }
 
     override fun importFile(onResult: (String?) -> Unit) {
@@ -326,29 +326,16 @@ class DesktopSystemUtils : SystemUtils {
             })
             fc.fileFilter = fc.choosableFileFilters.last()
             val result = fc.showOpenDialog(null)
-            if (result == javax.swing.JFileChooser.APPROVE_OPTION) {
-                val content = fc.selectedFile.readText()
-                onResult(content)
-            } else {
-                onResult(null)
-            }
-        } catch (_: Exception) {
-            onResult(null)
-        }
+            if (result == javax.swing.JFileChooser.APPROVE_OPTION) onResult(fc.selectedFile.readText()) else onResult(null)
+        } catch (_: Exception) { onResult(null) }
     }
 
-    override fun shareFile(fileName: String, content: String) {
-        exportFile(fileName, content) {}
-    }
+    override fun shareFile(fileName: String, content: String) { exportFile(fileName, content) {} }
 
-    override fun readInternalAsset(fileName: String): String? {
-        return try {
-            val classLoader = Thread.currentThread().contextClassLoader ?: this::class.java.classLoader
-            classLoader.getResourceAsStream(fileName)?.bufferedReader()?.use { it.readText() }
-        } catch (_: Exception) {
-            null
-        }
-    }
+    override fun readInternalAsset(fileName: String): String? = runCatching {
+        val classLoader = Thread.currentThread().contextClassLoader ?: this::class.java.classLoader
+        classLoader.getResourceAsStream(fileName)?.bufferedReader()?.use { it.readText() }
+    }.getOrNull()
 
     override fun setSystemProxy(host: String, port: Int) {
         try {
@@ -360,9 +347,8 @@ class DesktopSystemUtils : SystemUtils {
             ProcessBuilder("reg", "add", regPath, "/v", "ProxyEnable", "/t", "REG_DWORD", "/d", "1", "/f").start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
             ProcessBuilder("reg", "add", regPath, "/v", "ProxyServer", "/t", "REG_SZ", "/d", proxyStr, "/f").start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
             ProcessBuilder("reg", "add", regPath, "/v", "ProxyOverride", "/t", "REG_SZ", "/d", bypass, "/f").start().waitFor(5, java.util.concurrent.TimeUnit.SECONDS)
-            val psCommand = "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class WinInet { [DllImport(\"wininet.dll\")] public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, int dwBufferLength); }'; [WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null; [WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null"
+            val psCommand = "Add-Type -TypeDefinition 'using System; using System.Runtime.InteropServices; public class WinInet { [DllImport(\"wininet.dll\")] public static extern bool InternetSetOption(IntPtr hInternet, int dwOption, IntPtr lpBuffer, int dwBufferLength); }'; [WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null; [WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null"
             ProcessBuilder("powershell", "-WindowStyle", "Hidden", "-Command", psCommand).start().waitFor(8, java.util.concurrent.TimeUnit.SECONDS)
-            try { io.github.immaghzbad.aetherst.shared.data.LogRepository.i("[SystemProxy] set $proxyStr bypass=$bypass") } catch (_: Throwable) {}
         } catch (_: Exception) {}
     }
 
@@ -391,7 +377,6 @@ class DesktopSystemUtils : SystemUtils {
             } catch (_: Throwable) {}
             val psSet = "Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object { try { Set-DnsClientServerAddress -InterfaceIndex \$_.InterfaceIndex -ServerAddresses @($serverArray) -ErrorAction SilentlyContinue } catch {} }; Clear-DnsClientCache -ErrorAction SilentlyContinue"
             ProcessBuilder("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psSet).start().waitFor(8, java.util.concurrent.TimeUnit.SECONDS)
-            try { io.github.immaghzbad.aetherst.shared.data.LogRepository.i("[SystemDns] set to $dnsList") } catch (_: Throwable) {}
         } catch (_: Exception) {}
     }
 
@@ -407,63 +392,34 @@ class DesktopSystemUtils : SystemUtils {
                 val psReset = "Get-NetAdapter | Where-Object Status -eq 'Up' | ForEach-Object { try { Set-DnsClientServerAddress -InterfaceIndex \$_.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue } catch {} }; Clear-DnsClientCache -ErrorAction SilentlyContinue"
                 ProcessBuilder("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psReset).start().waitFor(8, java.util.concurrent.TimeUnit.SECONDS)
             }
-            try { io.github.immaghzbad.aetherst.shared.data.LogRepository.i("[SystemDns] restored") } catch (_: Throwable) {}
         } catch (_: Exception) {}
     }
 
     override fun isAdministrator(): Boolean = io.github.immaghzbad.aetherst.shared.core.Elevation.isElevated()
+    override fun relaunchAsAdmin() = io.github.immaghzbad.aetherst.shared.core.Elevation.relaunchElevatedAndExit()
+    override fun getInterfaceMtu(): Int = runCatching {
+        java.net.NetworkInterface.getNetworkInterfaces().asSequence().firstOrNull { it.isUp && !it.isLoopback && !it.isVirtual }?.mtu ?: 1500
+    }.getOrDefault(1500)
 
-    override fun relaunchAsAdmin() {
-        io.github.immaghzbad.aetherst.shared.core.Elevation.relaunchElevatedAndExit()
-    }
-
-    override fun getInterfaceMtu(): Int {
-        return try {
-            java.net.NetworkInterface.getNetworkInterfaces().asSequence().firstOrNull {
-                it.isUp && !it.isLoopback && !it.isVirtual
-            }?.mtu ?: 1500
-        } catch (_: Exception) {
-            1500
+    override fun isNetworkConnected(): Boolean = runCatching {
+        java.net.NetworkInterface.getNetworkInterfaces().asSequence().any {
+            it.isUp && !it.isLoopback && !it.isVirtual && it.inetAddresses.asSequence().any { addr -> !addr.isLoopbackAddress }
         }
-    }
+    }.getOrDefault(false)
 
-    override fun isNetworkConnected(): Boolean {
-        return try {
-            val hasInterface = java.net.NetworkInterface.getNetworkInterfaces().asSequence().any {
-                it.isUp && !it.isLoopback && !it.isVirtual && it.inetAddresses.asSequence().any { addr -> !addr.isLoopbackAddress }
-            }
-            if (hasInterface) return true
-            runCatching {
-                java.net.Socket().use { s -> s.connect(java.net.InetSocketAddress("1.1.1.1", 53), 2500) }
-            }.isSuccess
-        } catch (_: Exception) {
-            false
+    override fun execPing(host: String, size: Int, timeoutMs: Int, dontFragment: Boolean): Boolean = runCatching {
+        val isWindows = System.getProperty("os.name").lowercase().contains("win")
+        val pb = if (isWindows) {
+            if (dontFragment) ProcessBuilder("ping", "-n", "1", "-l", size.toString(), "-f", "-w", timeoutMs.toString(), host)
+            else ProcessBuilder("ping", "-n", "1", "-l", size.toString(), "-w", timeoutMs.toString(), host)
+        } else {
+            if (dontFragment) ProcessBuilder("ping", "-c", "1", "-s", size.toString(), "-M", "do", "-W", (timeoutMs / 1000).toString(), host)
+            else ProcessBuilder("ping", "-c", "1", "-s", size.toString(), "-W", (timeoutMs / 1000).toString(), host)
         }
-    }
-
-    override fun execPing(host: String, size: Int, timeoutMs: Int, dontFragment: Boolean): Boolean {
-        return try {
-            val isWindows = System.getProperty("os.name").lowercase().contains("win")
-            val pb = if (isWindows) {
-                if (dontFragment) {
-                    ProcessBuilder("ping", "-n", "1", "-l", size.toString(), "-f", "-w", timeoutMs.toString(), host)
-                } else {
-                    ProcessBuilder("ping", "-n", "1", "-l", size.toString(), "-w", timeoutMs.toString(), host)
-                }
-            } else {
-                if (dontFragment) {
-                    ProcessBuilder("ping", "-c", "1", "-s", size.toString(), "-M", "do", "-W", (timeoutMs / 1000).toString(), host)
-                } else {
-                    ProcessBuilder("ping", "-c", "1", "-s", size.toString(), "-W", (timeoutMs / 1000).toString(), host)
-                }
-            }
-            pb.redirectErrorStream(true)
-            val proc = pb.start()
-            proc.waitFor(timeoutMs.toLong(), java.util.concurrent.TimeUnit.MILLISECONDS) && proc.exitValue() == 0
-        } catch (_: Exception) {
-            false
-        }
-    }
+        pb.redirectErrorStream(true)
+        val proc = pb.start()
+        proc.waitFor(timeoutMs.toLong(), java.util.concurrent.TimeUnit.MILLISECONDS) && proc.exitValue() == 0
+    }.getOrDefault(false)
 }
 
 actual fun getVpnController(context: PlatformContext): VpnController = DesktopVpnController(context)
@@ -477,35 +433,28 @@ actual fun getCurrentTimestamp(): String {
 }
 
 actual val isDesktop: Boolean = true
+actual val isWindows: Boolean = System.getProperty("os.name")?.lowercase()?.contains("win") == true
 
-actual val isWindows: Boolean =
-    System.getProperty("os.name")?.lowercase()?.contains("win") == true
+actual fun getDeviceModel(): String = runCatching {
+    val osName = System.getProperty("os.name") ?: "Unknown"
+    val osArch = System.getProperty("os.arch") ?: ""
+    val computerName = runCatching {
+        if (osName.lowercase().contains("win")) {
+            val process = ProcessBuilder("hostname").start()
+            val name = process.inputStream.bufferedReader().readText().trim()
+            process.waitFor()
+            name.ifEmpty { null }
+        } else null
+    }.getOrNull()
+    val base = computerName ?: osName
+    if (osArch.isNotEmpty()) "$base ($osArch)" else base
+}.getOrDefault("Unknown PC")
 
-actual fun getDeviceModel(): String {
-    return try {
-        val osName = System.getProperty("os.name") ?: "Unknown"
-        val osArch = System.getProperty("os.arch") ?: ""
-        val computerName = try {
-            if (osName.lowercase().contains("win")) {
-                val process = ProcessBuilder("hostname").start()
-                val name = process.inputStream.bufferedReader().readText().trim()
-                process.waitFor()
-                if (name.isNotEmpty()) name else null
-            } else null
-        } catch (_: Exception) { null }
-
-        val base = computerName ?: osName
-        if (osArch.isNotEmpty()) "$base ($osArch)" else base
-    } catch (_: Exception) { "Unknown PC" }
-}
-
-actual fun getOsVersion(): String {
-    return try {
-        val osName = System.getProperty("os.name") ?: "Unknown"
-        val osVersion = System.getProperty("os.version") ?: ""
-        if (osVersion.isNotEmpty()) "$osName $osVersion" else osName
-    } catch (_: Exception) { "Unknown" }
-}
+actual fun getOsVersion(): String = runCatching {
+    val osName = System.getProperty("os.name") ?: "Unknown"
+    val osVersion = System.getProperty("os.version") ?: ""
+    if (osVersion.isNotEmpty()) "$osName $osVersion" else osName
+}.getOrDefault("Unknown")
 
 @Composable
 actual fun AppIcon(app: AppInfo, modifier: Modifier) {
@@ -516,80 +465,47 @@ actual fun AppIcon(app: AppInfo, modifier: Modifier) {
                 when {
                     iconPath.lowercase().endsWith(".lnk") -> {
                         val target = resolveLnkTarget(iconPath)
-                        if (target != null && File(target).exists() && target.lowercase().endsWith(".exe")) {
-                            extractExeIcon(target)
-                        } else null
+                        if (target != null && File(target).exists() && target.lowercase().endsWith(".exe")) extractExeIcon(target) else null
                     }
                     iconPath.lowercase().endsWith(".exe") -> extractExeIcon(iconPath)
-                    iconPath.lowercase().endsWith(".ico") -> {
-                        val bytes = File(iconPath).readBytes()
-                        org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
-                    }
-                    else -> {
-                        val bytes = File(iconPath).readBytes()
-                        org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
-                    }
+                    else -> org.jetbrains.skia.Image.makeFromEncoded(File(iconPath).readBytes()).toComposeImageBitmap()
                 }
-            } catch (_: Exception) {
-                null
-            }
-        } else {
-            null
-        }
+            } catch (_: Exception) { null }
+        } else null
     }
 
     if (bitmap != null) {
-        Image(
-            bitmap = bitmap,
-            contentDescription = null,
-            modifier = modifier
-        )
+        Image(bitmap = bitmap, contentDescription = null, modifier = modifier)
     } else {
-        Box(
-            modifier = modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF2C2C2E)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.Apps,
-                contentDescription = null,
-                tint = Color(0xFF8E8E93),
-                modifier = Modifier.size(24.dp)
-            )
+        Box(modifier = modifier.clip(RoundedCornerShape(8.dp)).background(Color(0xFF2C2C2E)), contentAlignment = Alignment.Center) {
+            Icon(imageVector = Icons.Default.Apps, contentDescription = null, tint = Color(0xFF8E8E93), modifier = Modifier.size(24.dp))
         }
     }
 }
 
-private fun resolveLnkTarget(lnkPath: String): String? {
-    return try {
-        val process = ProcessBuilder(
-            "powershell", "-NoProfile", "-Command",
-            "(New-Object -ComObject WScript.Shell).CreateShortcut('$lnkPath').TargetPath"
-        ).start()
-        val result = process.inputStream.bufferedReader().readText().trim()
-        process.waitFor()
-        if (result.isNotEmpty() && File(result).exists()) result else null
-    } catch (_: Exception) {
-        null
-    }
-}
+private fun resolveLnkTarget(lnkPath: String): String? = runCatching {
+    val process = ProcessBuilder(
+        "powershell", "-NoProfile", "-Command",
+        "(New-Object -ComObject WScript.Shell).CreateShortcut('$lnkPath').TargetPath"
+    ).start()
+    val result = process.inputStream.bufferedReader().readText().trim()
+    process.waitFor()
+    if (result.isNotEmpty() && File(result).exists()) result else null
+}.getOrNull()
 
-private fun extractExeIcon(exePath: String): androidx.compose.ui.graphics.ImageBitmap? {
-    return try {
-        val safeName = "icon_" + exePath.hashCode().toString().replace("-", "N") + "_" + File(exePath).nameWithoutExtension.take(16) + ".png"
-        val tempIcon = File(System.getenv("TEMP") ?: System.getProperty("java.io.tmpdir"), safeName)
-        val psExe = exePath.replace("'", "''")
-        val tempPath = tempIcon.absolutePath.replace("'", "''")
-        val process = ProcessBuilder(
-            "powershell", "-NoProfile", "-Command",
-            "try { [System.Drawing.Icon]::ExtractAssociatedIcon('$psExe').ToBitmap().Save('$tempPath') } catch {}"
-        ).start()
-        process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)
-        if (tempIcon.exists() && tempIcon.length() > 0) {
-            val bytes = tempIcon.readBytes()
-            runCatching { tempIcon.delete() }
-            org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
-        } else null
-    } catch (_: Exception) {
-        null
-    }
-}
+private fun extractExeIcon(exePath: String): androidx.compose.ui.graphics.ImageBitmap? = runCatching {
+    val safeName = "icon_" + exePath.hashCode().toString().replace("-", "N") + "_" + File(exePath).nameWithoutExtension.take(16) + ".png"
+    val tempIcon = File(System.getenv("TEMP") ?: System.getProperty("java.io.tmpdir"), safeName)
+    val psExe = exePath.replace("'", "''")
+    val tempPath = tempIcon.absolutePath.replace("'", "''")
+    val process = ProcessBuilder(
+        "powershell", "-NoProfile", "-Command",
+        "try { [System.Drawing.Icon]::ExtractAssociatedIcon('$psExe').ToBitmap().Save('$tempPath') } catch {}"
+    ).start()
+    process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)
+    if (tempIcon.exists() && tempIcon.length() > 0) {
+        val bytes = tempIcon.readBytes()
+        runCatching { tempIcon.delete() }
+        org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
+    } else null
+}.getOrNull()
