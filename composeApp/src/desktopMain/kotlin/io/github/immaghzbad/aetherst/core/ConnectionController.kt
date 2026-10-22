@@ -111,6 +111,14 @@ actual object ConnectionController {
             val config = AetherConfigRepository.getInstance(getSettings(context)).config.value.effectiveZeroTrustConfig()
             var effectiveConfig = config
 
+            // تنظیم GOOL بدون قفل کردن پورت‌های مسدود ایران
+            if (effectiveConfig.protocol == AetherProtocol.GOOL) {
+                if (effectiveConfig.wiwInner.isBlank()) {
+                    effectiveConfig = effectiveConfig.copy(wiwInner = "162.159.193.1:2408")
+                }
+                effectiveConfig = effectiveConfig.copy(wiwScan = true)
+            }
+
             if (CloakController.isSupported(config)) {
                 val started = runCatching { CloakController.start(context, config) }.getOrDefault(false)
                 if (started && CloakController.isRunning()) {
@@ -119,8 +127,8 @@ actual object ConnectionController {
                 }
             }
 
-            baseTx = trafficProvider.getTxBytes()
-            baseRx = trafficProvider.getRxBytes()
+            baseTx = getWintunBytes().first
+            baseRx = getWintunBytes().second
 
             val coreSocksPort = effectiveConfig.socksPort.toIntOrNull() ?: 1819
             val configuredHttpPort = effectiveConfig.httpPort.toIntOrNull() ?: 1820
@@ -142,13 +150,20 @@ actual object ConnectionController {
                 inputProvider = { loginCodeChannel.receive() }
             )
 
+            // انتظار واقعی برای متصل شدن هسته
             var coreReady = false
-            for (i in 0..40) {
+            for (i in 0..50) {
                 if (runner.connectionStatus.value == ConnectionStatus.RUNNING || probePort("127.0.0.1", coreSocksPort)) {
                     coreReady = true
                     break
                 }
                 delay(300.milliseconds)
+            }
+
+            if (!coreReady) {
+                LogRepository.e("[Controller] Core connection timed out")
+                _status.value = ConnectionStatus.ERROR
+                return
             }
 
             var effectiveTargetPort = coreSocksPort
@@ -193,7 +208,7 @@ actual object ConnectionController {
                 getSystemUtils(context).setSystemProxy("127.0.0.1", effectiveTargetPort)
             }
 
-            delay(1200.milliseconds)
+            // فقط در صورتی وضعیت RUNNING می‌شود که واقعاً سوکت آماده باشد
             _status.value = ConnectionStatus.RUNNING
             startTimer()
         }
@@ -264,16 +279,34 @@ actual object ConnectionController {
             _sessionTraffic.value = SessionTraffic()
         }
 
-        private fun updateTraffic() {
-            val currentTx = trafficProvider.getTxBytes()
-            val currentRx = trafficProvider.getRxBytes()
-            
-            val rawDiffTx = (currentTx - baseTx).coerceAtLeast(0L)
-            val rawDiffRx = (currentRx - baseRx).coerceAtLeast(0L)
+        // شمارشگر ۱۰۰٪ اختصاصی فقط برای کارت شبکه مجازی AetherST
+        private fun getWintunBytes(): Pair<Long, Long> {
+            return try {
+                val proc = ProcessBuilder("netsh", "interface", "ipv4", "show", "subinterfaces", "AetherST")
+                    .redirectErrorStream(true).start()
+                val lines = proc.inputStream.bufferedReader().readLines()
+                var rx = 0L
+                var tx = 0L
+                for (line in lines) {
+                    if (line.contains("AetherST", ignoreCase = true)) {
+                        val toks = line.trim().split(Regex("\\s+"))
+                        if (toks.size >= 5) {
+                            rx = toks[2].toLongOrNull() ?: 0L
+                            tx = toks[3].toLongOrNull() ?: 0L
+                            break
+                        }
+                    }
+                }
+                Pair(tx, rx)
+            } catch (_: Exception) {
+                Pair(trafficProvider.getTxBytes(), trafficProvider.getRxBytes())
+            }
+        }
 
-            val divisor = if (isPsiphonActive) 3.5 else 2.0
-            val totalTx = (rawDiffTx / divisor).toLong().coerceAtLeast(0L)
-            val totalRx = (rawDiffRx / divisor).toLong().coerceAtLeast(0L)
+        private fun updateTraffic() {
+            val (currentTx, currentRx) = getWintunBytes()
+            val totalTx = (currentTx - baseTx).coerceAtLeast(0L)
+            val totalRx = (currentRx - baseRx).coerceAtLeast(0L)
 
             val uploadSpeed = (totalTx - prevTx).coerceAtLeast(0L).toDouble()
             val downloadSpeed = (totalRx - prevRx).coerceAtLeast(0L).toDouble()
