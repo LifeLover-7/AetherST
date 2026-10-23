@@ -77,6 +77,20 @@ class AetherProcessRunner(private val context: PlatformContext) {
             val binaryPath = getBinaryManager(context).prepareBinary("aether")
             val command = mutableListOf(binaryPath, "--bind", bindAddress)
 
+            // انتخاب صریح پروتکل مطابق راهنمای رسمی باینری aether.exe
+            when (config.protocol) {
+                AetherProtocol.MASQUE -> command.add("--masque")
+                AetherProtocol.WG -> command.add("--wg")
+                AetherProtocol.GOOL -> command.add("--gool")
+                AetherProtocol.ZERO_TRUST -> {}
+            }
+
+            // تنظیم حالت اسکن و پروفایل Obfuscation (Noise)
+            command.add("--scan")
+            command.add(config.scanMode.rawValue)
+            command.add("--noize")
+            command.add(config.noise.rawValue)
+
             val httpBindHost = bindAddress.substringBefore(':')
             val actualHttpPort = config.httpPort.ifBlank { "1820" }
             if (config.httpProxyEnabled) {
@@ -121,7 +135,6 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 else -> "--dual"
             })
 
-            // ارسال فلگ‌های MASQUE فقط زمانی که پروتکل MASQUE یا ZERO_TRUST است (جلوگیری از تداخل در GOOL و WG)
             val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.ZERO_TRUST
             if (isMasqueBased) {
                 if (config.h2Mode) command.add("--h2")
@@ -143,35 +156,35 @@ class AetherProcessRunner(private val context: PlatformContext) {
 
             val wiwOuter = if (config.protocol == AetherProtocol.GOOL) config.wiwOuter.trim() else ""
             val wiwInner = if (config.protocol == AetherProtocol.GOOL) config.wiwInner.trim() else ""
-            val hasFullWiwManual = wiwOuter.isNotEmpty() && wiwInner.isNotEmpty()
 
-            // در GOOL نباید --peer تک‌نودی ارسال شود تا اسکنر دو مرحله‌ای (--wiw-scan) از کار نیفتد
-            val effectivePeerForCmd = when (config.protocol) {
-                AetherProtocol.GOOL -> ""
-                AetherProtocol.WG -> config.wgPeer.trim().ifEmpty { config.peer.trim() }
-                else -> config.peer.trim()
-            }
-
-            if (effectivePeerForCmd.isNotEmpty()) {
-                command.add("--peer")
-                command.add(effectivePeerForCmd)
-            }
-            if (config.protocol == AetherProtocol.WG && effectivePeerForCmd.isNotEmpty()) {
-                command.add("--wg-peer")
-                command.add(effectivePeerForCmd)
-            }
-
-            if (config.protocol == AetherProtocol.GOOL) {
-                if (wiwOuter.isNotEmpty()) {
-                    command.add("--wiw-outer")
-                    command.add(wiwOuter)
+            // مطابق راهنمای باینری: در حالت GOOL اگر آدرس دستی داده نشود، خود --gool اتوماتیک اسکن می‌کند.
+            // اگر آدرس دستی داده شود، Outer با --wg-peer و Inner با --peer ارسال می‌شود (فلگ --wiw-scan وجود ندارد).
+            when (config.protocol) {
+                AetherProtocol.GOOL -> {
+                    if (wiwOuter.isNotEmpty()) {
+                        command.add("--wg-peer")
+                        command.add(wiwOuter)
+                    }
+                    if (wiwInner.isNotEmpty()) {
+                        command.add("--peer")
+                        command.add(wiwInner)
+                    }
                 }
-                if (wiwInner.isNotEmpty()) {
-                    command.add("--wiw-inner")
-                    command.add(wiwInner)
+                AetherProtocol.WG -> {
+                    val wgPeer = config.wgPeer.trim().ifEmpty { config.peer.trim() }
+                    if (wgPeer.isNotEmpty()) {
+                        command.add("--peer")
+                        command.add(wgPeer)
+                        command.add("--wg-peer")
+                        command.add(wgPeer)
+                    }
                 }
-                if (!hasFullWiwManual || config.wiwScan) {
-                    command.add("--wiw-scan")
+                else -> {
+                    val peer = config.peer.trim()
+                    if (peer.isNotEmpty()) {
+                        command.add("--peer")
+                        command.add(peer)
+                    }
                 }
             }
 
@@ -192,11 +205,10 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 command.add("--dns")
                 command.add(config.dnsList)
             }
-            if (config.upstreamProxyEnabled && config.upstreamProxy.isNotEmpty()) {
-                command.add("--upstream")
-                command.add(config.upstreamProxy)
-                if (config.upstreamProxy.startsWith("http://", ignoreCase = true) && isMasqueBased) command.add("--h2")
-            }
+
+            val logLevelArg = if (config.coreLogLevel == AetherLogLevel.DEBUG) "debug" else "info"
+            command.add("--log-level")
+            command.add(logLevelArg)
 
             val env = mutableMapOf<String, String>()
             env["AETHER_PROTOCOL"] = config.protocol.rawValue
@@ -204,8 +216,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
             env["AETHER_SCAN"] = config.scanMode.rawValue
             env["AETHER_IP"] = config.effectiveIpMode().rawValue
             env["AETHER_SOCKS"] = bindAddress
-            // حداقل سطح info برای دریافت پیام‌های تایید تونل توسط parseOutputLine
-            env["AETHER_LOG_LEVEL"] = if (config.coreLogLevel == AetherLogLevel.DEBUG) "debug" else "info"
+            env["AETHER_LOG_LEVEL"] = logLevelArg
             env["AETHER_PERF_PROFILE"] = config.perfProfile.rawValue
             if (routingFile != null) {
                 env["AETHER_ROUTES_FILE"] = routingFile.absolutePath
@@ -230,12 +241,13 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 AetherProtocol.GOOL -> {
                     if (wiwOuter.isNotEmpty()) env["AETHER_WIW_OUTER_PEER"] = wiwOuter
                     if (wiwInner.isNotEmpty()) env["AETHER_WIW_INNER_PEER"] = wiwInner
-                    if (!hasFullWiwManual || config.wiwScan) env["AETHER_WIW_PEERS"] = "auto"
+                    if (wiwOuter.isEmpty() && wiwInner.isEmpty()) env["AETHER_WIW_PEERS"] = "auto"
                 }
                 AetherProtocol.WG -> {
-                    if (effectivePeerForCmd.isNotEmpty()) {
-                        env["AETHER_WG_PEER"] = effectivePeerForCmd
-                        env["AETHER_PEER"] = effectivePeerForCmd
+                    val wgPeer = config.wgPeer.trim().ifEmpty { config.peer.trim() }
+                    if (wgPeer.isNotEmpty()) {
+                        env["AETHER_WG_PEER"] = wgPeer
+                        env["AETHER_PEER"] = wgPeer
                     }
                 }
                 else -> {
@@ -313,7 +325,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
         if (currentAttemptId.get() != attemptId) return
         val lower = line.lowercase()
         when {
-            lower.contains(" error ") || lower.contains("[error]") -> LogRepository.e(line, "AetherCore")
+            lower.contains(" error ") || lower.contains("[error]") || lower.startsWith("error:") -> LogRepository.e(line, "AetherCore")
             lower.contains(" warn ") || lower.contains("[warn]") -> LogRepository.w(line, "AetherCore")
             else -> LogRepository.i(line, "AetherCore")
         }
@@ -341,6 +353,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 if ((lower.contains("inner") && (lower.contains("tunnel validated") || lower.contains("handshake complete"))) ||
                     lower.contains("gool tunnel validated") ||
                     lower.contains("wiw tunnel validated") ||
+                    lower.contains("warp-in-warp tunnel validated") ||
                     (goolOuterValidated && lower.contains("tunnel validated") && !lower.contains("outer"))
                 ) {
                     updateState(ConnectionStatus.RUNNING, attemptId)
