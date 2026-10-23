@@ -99,15 +99,16 @@ actual object ConnectionController {
         fun start() {
             scope.launch {
                 actionMutex.withLock {
-                    if (_status.value == ConnectionStatus.RUNNING ||
-                        _status.value == ConnectionStatus.STARTING ||
+                    // توجه: AetherViewModel قبل از صدا زدن start وضعیت را روی STARTING می‌گذارد،
+                    // پس فقط باید فعال بودن connectJob یا وضعیت RUNNING/VALIDATING چک شود
+                    if (connectJob?.isActive == true ||
+                        _status.value == ConnectionStatus.RUNNING ||
                         _status.value == ConnectionStatus.VALIDATING
                     ) return@withLock
 
-                    connectJob?.cancelAndJoin()
                     doStop()
-
                     _status.value = ConnectionStatus.STARTING
+
                     connectJob = scope.launch {
                         try {
                             doStart()
@@ -129,7 +130,7 @@ actual object ConnectionController {
             val config = AetherConfigRepository.getInstance(getSettings(context)).config.value.effectiveZeroTrustConfig()
             var effectiveConfig = config
 
-            // پیکربندی بهینه GOOL برای اسکن نودهای کم‌پینگ مجاور (ترکیه/آذربایجان/امارات) و جلوگیری از Fragmentation
+            // تنظیم بهینه GOOL بدون قفل کردن پورت مسدود 2408 و با اسکن خودکار دو لایه
             if (effectiveConfig.protocol == AetherProtocol.GOOL) {
                 effectiveConfig = effectiveConfig.copy(
                     wiwScan = true,
@@ -170,13 +171,13 @@ actual object ConnectionController {
                 inputProvider = { loginCodeChannel.receive() }
             )
 
-            // انتظار برای تایید واقعی تونل هسته (در GOOL اسکن و تایید دو لایه Outer و Inner تا ۴۵ ثانیه زمان می‌برد)
+            // انتظار واقعی برای متصل شدن هسته
             var coreReady = false
-            val maxWaitLoops = if (effectiveConfig.protocol == AetherProtocol.GOOL) 150 else 70
+            val maxWaitLoops = if (effectiveConfig.protocol == AetherProtocol.GOOL) 120 else 60
             for (i in 0..maxWaitLoops) {
                 currentCoroutineContext().ensureActive()
                 val currentRunnerStatus = runner.connectionStatus.value
-                if (currentRunnerStatus == ConnectionStatus.RUNNING) {
+                if (currentRunnerStatus == ConnectionStatus.RUNNING || probePort("127.0.0.1", coreSocksPort)) {
                     coreReady = true
                     break
                 }
@@ -187,7 +188,7 @@ actual object ConnectionController {
             }
 
             if (!coreReady) {
-                LogRepository.e("[Controller] Core connection timed out or failed, stopping background processes...")
+                LogRepository.e("[Controller] Core connection timed out")
                 doStop()
                 _status.value = ConnectionStatus.ERROR
                 return
@@ -282,7 +283,7 @@ actual object ConnectionController {
         private suspend fun probePort(host: String, port: Int): Boolean = withContext(Dispatchers.IO) {
             runCatching {
                 Socket().use {
-                    it.connect(InetSocketAddress(host, port), 400)
+                    it.connect(InetSocketAddress(host, port), 500)
                     true
                 }
             }.getOrDefault(false)
