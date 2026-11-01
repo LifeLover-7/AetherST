@@ -20,6 +20,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
@@ -52,11 +53,35 @@ import io.github.immaghzbad.aetherst.shared.i18n.LocalAppStrings
 import io.github.immaghzbad.aetherst.shared.model.AppInfo
 import io.github.immaghzbad.aetherst.shared.model.SplitTunnelAppManager
 
-private val IosCardBg = AppPalette.surfaceRaised
-private val IosSecondaryLabel = AppPalette.textSecondary
-private val IosActiveBlue = AppPalette.accent
-private val IosActiveGreen = AppPalette.statusConnected
-private val IosInactiveTrack = AppPalette.inactiveTrack
+private val IosCardBg get() = AppPalette.surfaceRaised
+private val IosSecondaryLabel get() = AppPalette.textSecondary
+private val IosActiveBlue get() = AppPalette.accent
+private val IosActiveGreen get() = AppPalette.statusConnected
+private val IosInactiveTrack get() = AppPalette.inactiveTrack
+
+private val IranianAppKeywords = listOf(
+    "snapp", "tapsi", "tap30", "divar", "torob", "digikala", "digipay", "bale", "eitaa",
+    "soroush", "mmdt", "rubika", "gap", "igap", "shaparak", "asanpardakht", "sekeh",
+    "bahamta", "blubank", "sibche", "myket", "farsitel", "cafebazaar", "bazaar",
+    "irancell", "myirancell", "mci", "hamrah", "rightel", "shatel", "asiatech",
+    "aparat", "filimo", "namava", "telewebion", "fidibo", "taaghche", "ketabrah",
+    "basalam", "okala", "alopeyk", "takhfifan", "alibaba", "mrbilit", "flytoday",
+    "jabama", "otaghak", "achareh", "karnameh", "azki", "bimito", "nobitex", "wallex",
+    "ramzinex", "bitpin", "tabdeal", "ompfinex", "mellat", "melli", "saderat", "sepah",
+    "tejarat", "parsian", "pasargad", "saman", "keshavarzi", "maskan", "refah",
+    "gardeshgari", "ayandeh", "neshan", "balad", "virgool", "zoomit", "digiato",
+    "varzesh3", "hamrahbank", "mobillet", "780", "724", "pishkhan", "sakha", "taamin",
+    "tamin", "rahvar", "shad", "zarinpal", "payping", "tobank", "wepod", "pod"
+)
+private val PersianCharRegex = Regex("[\\u0600-\\u06FF]")
+
+private fun isIranianApp(app: AppInfo): Boolean {
+    val pkg = app.packageName.lowercase().trim()
+    val name = app.name.lowercase().trim()
+    if (pkg.startsWith("ir.") || pkg.startsWith("com.ir.") || pkg.contains(".ir.")) return true
+    if (PersianCharRegex.containsMatchIn(app.name)) return true
+    return IranianAppKeywords.any { kw -> pkg.contains(kw) || name.contains(kw) }
+}
 
 @Composable
 fun SplitTunnelingScreen(
@@ -77,6 +102,7 @@ fun SplitTunnelingScreen(
     var showHelpDialog by remember { mutableStateOf(false) }
     var animateDialog by remember { mutableStateOf(false) }
     var modeFilter by remember { mutableIntStateOf(0) }
+    var autoDetectedCount by remember { mutableStateOf<Int?>(null) }
     val isWindowsDesktop = isDesktop
 
     val customApps by SplitTunnelAppManager.customApps.collectAsState()
@@ -116,13 +142,13 @@ fun SplitTunnelingScreen(
         }.sortedWith(compareBy<AppInfo> {
             when {
                 blockedPackages.contains(it.packageName) -> 0
-                tunnelAllApps -> if (excludedPackages.contains(it.packageName)) 2 else 1
+                tunnelAllApps -> if (excludedPackages.contains(it.packageName)) 1 else 2
                 else -> if (tunneledPackages.contains(it.packageName)) 1 else 2
             }
         }.thenBy { it.name.lowercase() })
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color.Black).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { focusManager.clearFocus() }) {
+    Column(modifier = Modifier.fillMaxSize().background(AppPalette.surfaceSunken).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { focusManager.clearFocus() }) {
         Row(modifier = Modifier.fillMaxWidth().padding(start = (8 * scaleFactor).dp, end = (12 * scaleFactor).dp, top = if (isWindowsDesktop) 12.dp else 36.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack, modifier = Modifier.size((36 * scaleFactor).dp)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color.White, modifier = Modifier.size((20 * scaleFactor).dp))
@@ -150,7 +176,6 @@ fun SplitTunnelingScreen(
                             SplitTunnelAppManager.onPickDesktopApp?.invoke { pickedApp ->
                                 if (pickedApp != null) {
                                     selectedTab = 0
-                                    // فعال‌سازی خودکار برنامه اضافه‌شده (در حالت کل دستگاه = Bypass، در غیر این صورت = Tunnel)
                                     onUpdateMode(pickedApp.packageName, if (tunnelAllApps) 0 else 1)
                                 }
                             }
@@ -161,6 +186,37 @@ fun SplitTunnelingScreen(
                     Icon(Icons.Default.Add, contentDescription = null, tint = Color.White, modifier = Modifier.size((15 * scaleFactor).dp))
                     Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
                     Text("افزودن برنامه", color = Color.White, fontWeight = FontWeight.Bold, fontSize = (11 * scaleFactor).sp)
+                }
+                Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
+            } else {
+                // دکمه شناسایی خودکار برنامه‌های ایرانی نصب‌شده روی موبایل و افزودن به لیست Bypass
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(IosActiveGreen.copy(alpha = 0.2f))
+                        .clickable {
+                            val iranianPkgs = effectiveApps
+                                .filter { !it.isSystemApp && isIranianApp(it) }
+                                .map { it.packageName }
+                            if (iranianPkgs.isNotEmpty()) {
+                                onBulkUpdateMode(iranianPkgs, 0) // 0 = Bypass (Direct)
+                                autoDetectedCount = iranianPkgs.size
+                                modeFilter = 2 // نمایش تب Bypass
+                            } else {
+                                autoDetectedCount = 0
+                            }
+                        }
+                        .padding(horizontal = (10 * scaleFactor).dp, vertical = (6 * scaleFactor).dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.AutoFixHigh, contentDescription = null, tint = IosActiveGreen, modifier = Modifier.size((15 * scaleFactor).dp))
+                    Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
+                    Text(
+                        text = if (autoDetectedCount != null) "اپ‌های ایرانی (${autoDetectedCount})" else "اپ‌های ایرانی",
+                        color = IosActiveGreen,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = (11 * scaleFactor).sp
+                    )
                 }
                 Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
             }
@@ -175,7 +231,7 @@ fun SplitTunnelingScreen(
                 Spacer(modifier = Modifier.width((8 * scaleFactor).dp))
                 Column {
                     Text(strings.SPLIT_WHOLE_DEVICE_ON, color = Color(0xFFFFD60A), fontWeight = FontWeight.Bold, fontSize = (12 * scaleFactor).sp, textAlign = TextAlign.Start)
-                    Text("هر برنامه‌ای را که در لیست زیر خاموش کنید، از تونل کل دستگاه خارج (Bypass) می‌شود.", color = Color.White.copy(alpha = 0.6f), fontSize = (11 * scaleFactor).sp, lineHeight = (15 * scaleFactor).sp, textAlign = TextAlign.Start)
+                    Text("هر برنامه‌ای را که در لیست زیر خاموش کنید (یا با دکمه «اپ‌های ایرانی» انتخاب شود)، مستقیم و بدون فیلترشکن (Bypass) وصل می‌شود.", color = Color.White.copy(alpha = 0.7f), fontSize = (11 * scaleFactor).sp, lineHeight = (15 * scaleFactor).sp, textAlign = TextAlign.Start)
                 }
             }
         }
@@ -207,7 +263,7 @@ fun SplitTunnelingScreen(
             listOf(strings.SPLIT_FILTER_ALL, strings.SPLIT_FILTER_TUNNEL, strings.SPLIT_FILTER_BYPASS, strings.SPLIT_FILTER_BLOCKED).forEachIndexed { index, label ->
                 val isSelected = modeFilter == index
                 val count = when (index) { 1 -> tunneledCount; 2 -> bypassCount; 3 -> blockedCount; else -> filteredApps.size }
-                Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(if (isSelected) Color.White.copy(alpha = 0.12f) else IosCardBg).clickable { modeFilter = index }.padding(vertical = (6 * scaleFactor).dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).background(if (isSelected) IosActiveBlue.copy(alpha = 0.25f) else IosCardBg).clickable { modeFilter = index }.padding(vertical = (6 * scaleFactor).dp), contentAlignment = Alignment.Center) {
                     Text("$label • $count", color = if (isSelected) Color.White else IosSecondaryLabel, fontSize = (10 * scaleFactor).sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, maxLines = 1)
                 }
             }
@@ -226,7 +282,6 @@ fun SplitTunnelingScreen(
                     onUpdateMode = { m -> onUpdateMode(app.packageName, m) },
                     onRemoveApp = if (isWindowsDesktop) {
                         {
-                            // بازگردانی حالت برنامه به پیش‌فرض و حذف از لیست
                             onUpdateMode(app.packageName, if (tunnelAllApps) 1 else 0)
                             SplitTunnelAppManager.onRemoveApp?.invoke(app.packageName)
                         }
@@ -250,8 +305,8 @@ private fun AppLineItem(
 ) {
     val strings = LocalAppStrings.current
     val bg = when (mode) {
-        2 -> AppPalette.statusError.copy(alpha = 0.08f)
-        1 -> IosActiveBlue.copy(alpha = 0.08f)
+        2 -> AppPalette.statusError.copy(alpha = 0.12f)
+        0 -> IosActiveGreen.copy(alpha = 0.10f)
         else -> IosCardBg
     }
     androidx.compose.runtime.CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -261,7 +316,21 @@ private fun AppLineItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(app.name, fontWeight = FontWeight.SemiBold, color = if (mode == 2) AppPalette.statusError else Color.White, fontSize = (13 * scaleFactor).sp, maxLines = 1, textAlign = TextAlign.Left)
                 Text(app.packageName, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp, maxLines = 1, textAlign = TextAlign.Left)
-                if (mode != 0) Text(if (mode == 1) strings.SPLIT_TUNNEL_VPN else strings.SPLIT_BLOCKED_NO_INTERNET, color = if (mode == 1) IosActiveBlue else AppPalette.statusError, fontSize = (10 * scaleFactor).sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Left)
+                Text(
+                    text = when (mode) {
+                        2 -> strings.SPLIT_BLOCKED_NO_INTERNET
+                        0 -> "Bypass • Direct"
+                        else -> strings.SPLIT_TUNNEL_VPN
+                    },
+                    color = when (mode) {
+                        2 -> AppPalette.statusError
+                        0 -> IosActiveGreen
+                        else -> IosActiveBlue
+                    },
+                    fontSize = (10 * scaleFactor).sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Left
+                )
             }
             Spacer(modifier = Modifier.width((6 * scaleFactor).dp))
             if (onRemoveApp != null) {
