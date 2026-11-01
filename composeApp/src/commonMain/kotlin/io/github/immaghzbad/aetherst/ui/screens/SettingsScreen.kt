@@ -118,6 +118,7 @@ import io.github.immaghzbad.aetherst.shared.model.AetherNoise
 import io.github.immaghzbad.aetherst.shared.model.AetherPerfProfile
 import io.github.immaghzbad.aetherst.shared.model.AetherProtocol
 import io.github.immaghzbad.aetherst.shared.model.AetherScanMode
+import io.github.immaghzbad.aetherst.shared.model.ChainProvider
 import io.github.immaghzbad.aetherst.shared.model.ConnectionMode
 import io.github.immaghzbad.aetherst.shared.model.IpInfoProvider
 import io.github.immaghzbad.aetherst.shared.model.TunnelEngine
@@ -131,6 +132,7 @@ import io.github.immaghzbad.aetherst.shared.ui.components.IosInputFieldRow
 import io.github.immaghzbad.aetherst.shared.ui.components.IosPickerRow
 import io.github.immaghzbad.aetherst.shared.ui.components.IosPresetItem
 import io.github.immaghzbad.aetherst.shared.ui.components.IosSwitchRow
+import io.github.immaghzbad.aetherst.shared.ui.components.PlatformBackHandler
 import io.github.immaghzbad.aetherst.shared.i18n.LocalAppStrings
 import io.github.immaghzbad.aetherst.shared.ui.theme.AppPalette
 
@@ -271,13 +273,33 @@ private fun CategoryCard(icon: ImageVector, iconBg: Color, title: String, subtit
 }
 
 @Composable
-private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryOptimized: Boolean, onBack: () -> Unit, onUpdateConfig: (AetherConfig) -> Unit, onUpdateTunnelEngine: (TunnelEngine) -> Unit, onApplyPreset: (String) -> Unit, onOpenSplitTunneling: () -> Unit, onOpenRoutingRules: () -> Unit, onRequestBatteryOptimization: () -> Unit, onOpenVpnSettings: () -> Unit, onResetAll: () -> Unit, onExportBackup: () -> Unit, onImportBackup: () -> Unit, onOptimizeMtu: () -> Unit, isOptimizingMtu: Boolean, onShowToast: (String, Boolean) -> Unit, bottomContentPadding: Dp, onOpenDnsOptimizer: () -> Unit = {}) {
+private fun SettingsSubPage(
+    page: SettingsPage,
+    config: AetherConfig,
+    isBatteryOptimized: Boolean,
+    onBack: () -> Unit,
+    onUpdateConfig: (AetherConfig) -> Unit,
+    onUpdateTunnelEngine: (TunnelEngine) -> Unit,
+    onApplyPreset: (String) -> Unit,
+    onOpenSplitTunneling: () -> Unit,
+    onOpenRoutingRules: () -> Unit,
+    onRequestBatteryOptimization: () -> Unit,
+    onOpenVpnSettings: () -> Unit,
+    onResetAll: () -> Unit,
+    onExportBackup: () -> Unit,
+    onImportBackup: () -> Unit,
+    onOptimizeMtu: () -> Unit,
+    isOptimizingMtu: Boolean,
+    onShowToast: (String, Boolean) -> Unit,
+    bottomContentPadding: Dp,
+    onOpenDnsOptimizer: () -> Unit = {}
+) {
     var showResetDialog by remember { mutableStateOf(false) }
     var showAdvancedZt by remember { mutableStateOf(false) }
     val isAndroid = remember { try { Class.forName("android.os.Build"); true } catch(_: Throwable) { false } }
     val focusManager = LocalFocusManager.current
 
-    io.github.immaghzbad.aetherst.shared.ui.components.PlatformBackHandler(enabled = true, onBack = onBack)
+    PlatformBackHandler(enabled = true, onBack = onBack)
 
     Column(modifier = Modifier.fillMaxSize().background(AppPalette.surfaceSunken).clickable(interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) { focusManager.clearFocus() }) {
         val strings = LocalAppStrings.current
@@ -300,7 +322,7 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
         }
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomContentPadding + 12.dp, top = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (page) {
-                SettingsPage.PRESETS -> item { PresetPage(config, onUpdateConfig, onApplyPreset, onShowToast) })
+                SettingsPage.PRESETS -> item { PresetPage(config, onUpdateConfig, onApplyPreset, onShowToast) }
                 SettingsPage.CONNECTION -> item { ConnectionPage(config, isAndroid, onUpdateConfig, onUpdateTunnelEngine, onOpenSplitTunneling, onOpenRoutingRules) }
                 SettingsPage.PROTOCOL -> item { ProtocolPage(config, onUpdateConfig, onOptimizeMtu, isOptimizingMtu) }
                 SettingsPage.ZEROTRUST -> item { ZeroTrustPage(config, showAdvancedZt, onUpdateConfig) { showAdvancedZt = it } }
@@ -318,31 +340,152 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
     if (showResetDialog) IosConfirmationDialog(title = strings.SETTINGS_TITLE, message = strings.RESET_DEFAULTS_SUB, confirmText = strings.RESET_DEFAULTS, confirmColor = AppPalette.statusError, onConfirm = { onResetAll(); showResetDialog = false; onShowToast(strings.RESET_DEFAULTS_SUB, false) }, onDismiss = { showResetDialog = false })
 }
 
-@(و د
-
-        IosPickerRow(icon = Icons.AutoMirrored.Filled.AltRoute, iconBg = IosActiveBlue, title = strings.DOMAIN_IP_ROUTING, value = "${config.routingRules.size} ${strings.ROUTING_RULES_TITLE}", options = emptyList(), onOptionSelected = {}, onClickOverride = onOpenRoutingRules)
-
-        AppDivider()
-        val providerOptions = listOf("Psiphon", "Tor")
-        val providerIdx = if (config.chainProvider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.TOR) 1 else 0
-        IosPickerRow(icon = Icons.Default.Shield, iconBg = AppPalette.accentVariant, title = strings.CHAIN_PROVIDER, value = providerOptions[providerIdx], options = providerOptions, onOptionSelected = { idx ->
-            val provider = if (idx == 1) io.github.immaghzbad.aetherst.shared.model.ChainProvider.TOR else io.github.immaghzbad.aetherst.shared.model.ChainProvider.PSIPHON
-            onUpdateConfig(config.copy(chainProvider = provider, psiphonEnabled = if (provider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.TOR) false else config.psiphonEnabled, torEnabled = if (provider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.PSIPHON) false else config.torEnabled))
-        })
-        if (config.chainProvider == io.github.immaghzbad.aetherst.shared.model.ChainProvider.PSIPHON) {
+@Composable
+private fun PresetPage(
+    config: AetherConfig,
+    onUpdateConfig: (AetherConfig) -> Unit,
+    onApplyPreset: (String) -> Unit,
+    onShowToast: (String, Boolean) -> Unit
+) {
+    val strings = LocalAppStrings.current
+    IosGroupCard {
+        Column {
+            IosPresetItem(
+                icon = Icons.Default.Speed,
+                iconBg = IosActiveGreen,
+                title = "Gaming (Low Ping & UDP)",
+                subtitle = "WARP-in-WARP (Gool) • Non-Iran IP • Native UDP for Online Games",
+                isActive = config.presetId == "gaming",
+                onClick = {
+                    onUpdateConfig(
+                        config.copy(
+                            presetId = "gaming",
+                            protocol = AetherProtocol.GOOL,
+                            wiwScan = true,
+                            psiphonEnabled = false,
+                            psiphonOnly = false,
+                            torEnabled = false,
+                            ipMode = AetherIpMode.IPV4,
+                            scanMode = AetherScanMode.BALANCED,
+                            noise = AetherNoise.BALANCED,
+                            mtu = 1240,
+                            keepaliveEnabled = true,
+                            keepalive = 5,
+                            hevUdpMode = "udp",
+                            dnsEnabled = true,
+                            dnsList = "1.1.1.1,1.0.0.1"
+                        )
+                    )
+                    onShowToast("پروفایل گیمینگ (GOOL + UDP) فعال شد", false)
+                }
+            )
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.background(IosActiveGreen.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("UDP NATIVE", color = IosActiveGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.background(IosGroupBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("MTU 1240", color = IosSecondaryLabel, fontSize = 10.sp) }
+                Box(modifier = Modifier.background(IosActiveBlue.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("NON-IRAN IP", color = IosActiveBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+            }
             AppDivider()
-            IosSwitchRow(icon = Icons.Default.Shield, iconBg = IosActiveGreen, title = strings.PSIPHON_ONLY, subtitle = strings.PSIPHON_ONLY_SUB, checked = config.psiphonOnly, onCheckedChange = { onUpdateConfig(config.copy(psiphonOnly = it)) }, testTag = "switch_psiphon_only")
-        }
-
-        if (isAndroid) {
+            IosPresetItem(icon = Icons.Default.Bolt, iconBg = AppPalette.statusScanning, title = strings.PRESETS_TURBO, subtitle = strings.PRESETS_TURBO_SUB, isActive = config.presetId == "turbo", onClick = { onApplyPreset("turbo"); onShowToast(strings.PRESETS_TURBO, false) })
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.background(AppPalette.statusScanning.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(strings.PRESET_CHIP_SPEED, color = AppPalette.statusScanning, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.background(IosGroupBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("MTU 1320", color = IosSecondaryLabel, fontSize = 10.sp) }
+                if (config.presetId == "turbo") Box(modifier = Modifier.background(Color(0xFFFFD700).copy(alpha = 0.2f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("Recommended", color = Color(0xFFFFD700), fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+            }
             AppDivider()
-            IosSwitchRow(icon = Icons.Default.Share, iconBg = AppPalette.accentVariantAlt, title = strings.SHARE_HOTSPOT, subtitle = strings.SHARE_HOTSPOT_SUB, checked = config.shareHotspot, onCheckedChange = { onUpdateConfig(config.copy(shareHotspot = it)) }, testTag = "switch_share_hotspot")
-            if (config.shareHotspot) HotspotInfo(config)
+            IosPresetItem(icon = Icons.Default.Search, iconBg = AppPalette.accent, title = strings.PRESETS_THOROUGH, subtitle = strings.PRESETS_THOROUGH_SUB, isActive = config.presetId == "thorough", onClick = { onApplyPreset("thorough"); onShowToast(strings.PRESETS_THOROUGH, false) })
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.background(AppPalette.accent.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(strings.PRESET_CHIP_STABLE, color = AppPalette.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.background(IosGroupBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("MTU 1320", color = IosSecondaryLabel, fontSize = 10.sp) }
+            }
+            AppDivider()
+            IosPresetItem(icon = Icons.Default.VisibilityOff, iconBg = AppPalette.accentVariant, title = strings.PRESETS_STEALTH, subtitle = strings.PRESETS_STEALTH_SUB, isActive = config.presetId == "stealth", onClick = { onApplyPreset("stealth"); onShowToast(strings.PRESETS_STEALTH, false) })
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.background(AppPalette.accentVariant.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(strings.PRESET_CHIP_STEALTH, color = AppPalette.accentVariant, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.background(IosGroupBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("MTU 1330", color = IosSecondaryLabel, fontSize = 10.sp) }
+            }
+            AppDivider()
+            IosPresetItem(icon = Icons.Default.Shield, iconBg = IosActiveBlue, title = strings.PRESETS_IRONCLAD, subtitle = strings.PRESETS_IRONCLAD_SUB, isActive = config.presetId == "ironclad", onClick = { onApplyPreset("ironclad"); onShowToast(strings.PRESETS_IRONCLAD, false) })
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.background(AppPalette.statusError.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(strings.PRESET_CHIP_IRONCLAD, color = AppPalette.statusError, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.background(IosGroupBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("MTU 1330", color = IosSecondaryLabel, fontSize = 10.sp) }
+            }
+            AppDivider()
+            IosPresetItem(icon = Icons.Default.Tune, iconBg = AppPalette.textSecondary, title = strings.PRESETS_CUSTOM, subtitle = strings.PRESETS_CUSTOM_SUB, isActive = config.presetId == "custom", onClick = { onApplyPreset("custom"); onShowToast(strings.PRESETS_CUSTOM, false) })
         }
-    } }
+    }
 }
 
-@Composable private fun InterfacePage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit) {
+@Composable
+private fun ConnectionPage(
+    config: AetherConfig,
+    isAndroid: Boolean,
+    onUpdateConfig: (AetherConfig) -> Unit,
+    onUpdateTunnelEngine: (TunnelEngine) -> Unit,
+    onOpenSplitTunneling: () -> Unit,
+    onOpenRoutingRules: () -> Unit
+) {
+    val strings = LocalAppStrings.current
+    IosGroupCard {
+        Column {
+            val opts = if (isAndroid) listOf(strings.TUN_MODE, strings.PROXY_ONLY) else listOf(strings.TUN_MODE_GLOBAL, strings.SYSTEM_PROXY, strings.PROXY_ONLY)
+            IosPickerRow(
+                icon = Icons.Default.VpnLock,
+                iconBg = AppPalette.statusConnected,
+                title = strings.CONNECTION_MODE,
+                value = when (config.connectionMode) {
+                    ConnectionMode.TUNNEL -> if (isAndroid) strings.TUN_MODE else strings.TUN_MODE_GLOBAL
+                    ConnectionMode.SYSTEM_PROXY -> strings.SYSTEM_PROXY
+                    else -> strings.PROXY_ONLY
+                },
+                options = opts,
+                onOptionSelected = {
+                    val m = if (isAndroid) {
+                        if (it == 0) ConnectionMode.TUNNEL else ConnectionMode.PROXY_ONLY
+                    } else {
+                        when (it) { 0 -> ConnectionMode.TUNNEL; 1 -> ConnectionMode.SYSTEM_PROXY; else -> ConnectionMode.PROXY_ONLY }
+                    }
+                    onUpdateConfig(config.copy(connectionMode = m))
+                }
+            )
+            if (config.connectionMode == ConnectionMode.TUNNEL) {
+                AppDivider()
+                IosPickerRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.accentVariant, title = strings.TUNNEL_ENGINE, value = config.tunnelEngine.displayName, options = TunnelEngine.entries.map { it.displayName }, onOptionSelected = { onUpdateTunnelEngine(TunnelEngine.entries[it]) })
+                AppDivider()
+                IosSwitchRow(icon = Icons.Default.AllInclusive, iconBg = IosActiveBlue, title = strings.TUNNEL_WHOLE_DEVICE, subtitle = strings.TUNNEL_WHOLE_DEVICE_SUB, checked = config.tunnelAllApps, onCheckedChange = { onUpdateConfig(config.copy(tunnelAllApps = it)) }, testTag = "switch_tunnel_all")
+                AppDivider()
+                val activeSplitCount = if (config.tunnelAllApps) {
+                    config.excludedPackages.size + config.blockedPackages.size
+                } else {
+                    config.tunneledPackages.size + config.blockedPackages.size
+                }
+                IosPickerRow(icon = Icons.Default.Tune, iconBg = AppPalette.accentVariant, title = strings.SPLIT_TUNNELING, value = "$activeSplitCount ${strings.SPLIT_TUNNELING_CUSTOM}", options = emptyList(), onOptionSelected = {}, onClickOverride = onOpenSplitTunneling, enabled = true)
+                AppDivider()
+            }
+
+            IosPickerRow(icon = Icons.AutoMirrored.Filled.AltRoute, iconBg = IosActiveBlue, title = strings.DOMAIN_IP_ROUTING, value = "${config.routingRules.size} ${strings.ROUTING_RULES_TITLE}", options = emptyList(), onOptionSelected = {}, onClickOverride = onOpenRoutingRules)
+            AppDivider()
+            val providerOptions = listOf("Psiphon", "Tor")
+            val providerIdx = if (config.chainProvider == ChainProvider.TOR) 1 else 0
+            IosPickerRow(icon = Icons.Default.Shield, iconBg = AppPalette.accentVariant, title = strings.CHAIN_PROVIDER, value = providerOptions[providerIdx], options = providerOptions, onOptionSelected = { idx ->
+                val provider = if (idx == 1) ChainProvider.TOR else ChainProvider.PSIPHON
+                onUpdateConfig(config.copy(chainProvider = provider, psiphonEnabled = if (provider == ChainProvider.TOR) false else config.psiphonEnabled, torEnabled = if (provider == ChainProvider.PSIPHON) false else config.torEnabled))
+            })
+            if (config.chainProvider == ChainProvider.PSIPHON) {
+                AppDivider()
+                IosSwitchRow(icon = Icons.Default.Shield, iconBg = IosActiveGreen, title = strings.PSIPHON_ONLY, subtitle = strings.PSIPHON_ONLY_SUB, checked = config.psiphonOnly, onCheckedChange = { onUpdateConfig(config.copy(psiphonOnly = it)) }, testTag = "switch_psiphon_only")
+            }
+
+            if (isAndroid) {
+                AppDivider()
+                IosSwitchRow(icon = Icons.Default.Share, iconBg = AppPalette.accentVariantAlt, title = strings.SHARE_HOTSPOT, subtitle = strings.SHARE_HOTSPOT_SUB, checked = config.shareHotspot, onCheckedChange = { onUpdateConfig(config.copy(shareHotspot = it)) }, testTag = "switch_share_hotspot")
+                if (config.shareHotspot) HotspotInfo(config)
+            }
+        }
+    }
+}
+
+@Composable
+private fun InterfacePage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit) {
     val strings = LocalAppStrings.current
     val isSwipeSelected = config.connectButtonStyle == "swipe_manual"
     val themeCodes = listOf("default", "glass", "emerald", "amethyst", "crimson")
@@ -396,7 +539,8 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
     }
 }
 
-@Composable private fun HotspotInfo(config: AetherConfig) {
+@Composable
+private fun HotspotInfo(config: AetherConfig) {
     val strings = LocalAppStrings.current
     Column(modifier = Modifier.fillMaxWidth().background(IosGroupBg.copy(alpha = 0.4f)).padding(14.dp)) {
         var localIp by remember { mutableStateOf<String?>(null) }
@@ -409,7 +553,8 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
     }
 }
 
-@Composable private fun ProtocolPage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit, onOptimizeMtu: () -> Unit, isOptimizingMtu: Boolean) {
+@Composable
+private fun ProtocolPage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit, onOptimizeMtu: () -> Unit, isOptimizingMtu: Boolean) {
     val strings = LocalAppStrings.current
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         IosGroupCard { Column {
@@ -467,7 +612,8 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
     }
 }
 
-@Composable private fun ZeroTrustPage(config: AetherConfig, showAdvanced: Boolean, onUpdateConfig: (AetherConfig) -> Unit, onToggleAdvanced: (Boolean) -> Unit) {
+@Composable
+private fun ZeroTrustPage(config: AetherConfig, showAdvanced: Boolean, onUpdateConfig: (AetherConfig) -> Unit, onToggleAdvanced: (Boolean) -> Unit) {
     val strings = LocalAppStrings.current
     val isZt = config.protocol == AetherProtocol.ZERO_TRUST
     val ztError = if (isZt) config.zeroTrustError() else null
@@ -489,7 +635,8 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
     }
 }
 
-@Composable private fun NetworkPage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit, onShowToast: (String, Boolean) -> Unit = { _, _ -> }, onOpenDnsOptimizer: () -> Unit = {}) {
+@Composable
+private fun NetworkPage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit, onShowToast: (String, Boolean) -> Unit = { _, _ -> }, onOpenDnsOptimizer: () -> Unit = {}) {
     val strings = LocalAppStrings.current
     val httpLocked = config.isPsiphonActive() || config.isTorActive()
     val httpLockToast = if (config.isTorActive()) strings.TOAST_DISABLE_TOR_FIRST else strings.TOAST_DISABLE_PSIPHON_FIRST
@@ -532,7 +679,8 @@ private fun SettingsSubPage(page: SettingsPage, config: AetherConfig, isBatteryO
     } }
 }
 
-@Composable private fun SecurityPage(config: AetherConfig, isAndroid: Boolean, isBatteryOptimized: Boolean, onUpdateConfig: (AetherConfig) -> Unit, onRequestBatteryOptimization: () -> Unit) {
+@Composable
+private fun SecurityPage(config: AetherConfig, isAndroid: Boolean, isBatteryOptimized: Boolean, onUpdateConfig: (AetherConfig) -> Unit, onRequestBatteryOptimization: () -> Unit) {
     val strings = LocalAppStrings.current
     IosGroupCard { Column {
         IosSwitchRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.accentVariant, title = strings.STRICT_KILL_SWITCH, subtitle = strings.STRICT_KILL_SWITCH_SUB, checked = config.strictKillSwitch, onCheckedChange = { onUpdateConfig(config.copy(strictKillSwitch = it)) }, testTag = "switch_strict_kill_switch"); AppDivider()
@@ -573,7 +721,8 @@ private fun buildUpstreamProxy(p: ParsedUpstreamProxy): String {
 private fun decodeUpstreamCredential(s: String): String = s.replace("%40", "@").replace("%3A", ":")
 private fun encodeUpstreamCredential(s: String): String = s.replace("@", "%40").replace(":", "%3A")
 
-@Composable private fun DiagnosticsPage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit) {
+@Composable
+private fun DiagnosticsPage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit) {
     val strings = LocalAppStrings.current
     IosGroupCard { Column {
         IosInputFieldRow(icon = Icons.Default.Speed, iconBg = AppPalette.statusScanning, label = strings.PING_URL_LABEL, value = config.pingUrl, onValueChange = { onUpdateConfig(config.copy(pingUrl = it)) }, placeholder = "https://www.gstatic.com/generate_204", testTag = "ping_url_input"); AppDivider()
@@ -606,7 +755,8 @@ private fun encodeUpstreamCredential(s: String): String = s.replace("@", "%40").
     } }
 }
 
-@Composable private fun HevEnginePage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit) {
+@Composable
+private fun HevEnginePage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit) {
     val strings = LocalAppStrings.current
     val hevLevels = listOf("error", "warn", "info", "debug")
     val levelLabels = mapOf("error" to strings.LOG_LEVEL_ERROR, "warn" to strings.HEV_LOG_WARN_DEFAULT, "info" to strings.HEV_LOG_INFO, "debug" to strings.HEV_LOG_DEBUG)
@@ -659,7 +809,8 @@ private fun encodeUpstreamCredential(s: String): String = s.replace("@", "%40").
     }
 }
 
-@Composable private fun SystemPage(isAndroid: Boolean, onExportBackup: () -> Unit, onImportBackup: () -> Unit, onOpenVpnSettings: () -> Unit, onResetClick: () -> Unit) {
+@Composable
+private fun SystemPage(isAndroid: Boolean, onExportBackup: () -> Unit, onImportBackup: () -> Unit, onOpenVpnSettings: () -> Unit, onResetClick: () -> Unit) {
     IosGroupCard { Column {
         val strings = LocalAppStrings.current
         if (isAndroid) {
