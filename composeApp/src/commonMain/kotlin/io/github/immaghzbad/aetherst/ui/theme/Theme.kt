@@ -1,6 +1,5 @@
 package io.github.immaghzbad.aetherst.shared.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -10,21 +9,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
-
-private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFF007AFF),
-    onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFF0A2A5E),
-    onPrimaryContainer = Color(0xFFD6E2FF),
-    secondary = Color(0xFF8A8A95),
-    background = Color(0xFF0F0F12),
-    onBackground = Color(0xFFECECF1),
-    surface = Color(0xFF16161A),
-    onSurface = Color(0xFFECECF1),
-    surfaceVariant = Color(0xFF232329),
-    onSurfaceVariant = Color(0xFFCAC4D0),
-    outline = Color(0xFF3A3A42),
-)
 
 private val LightColorScheme = lightColorScheme(
     primary = Color(0xFF0A6CFF),
@@ -47,7 +31,21 @@ fun MyApplicationTheme(
     isRtl: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
+    val dynamicDarkScheme = darkColorScheme(
+        primary = AppPalette.accent,
+        onPrimary = Color(0xFFFFFFFF),
+        primaryContainer = AppPalette.accentVariant,
+        onPrimaryContainer = Color(0xFFD6E2FF),
+        secondary = AppPalette.textSecondary,
+        background = AppPalette.surfaceSunken,
+        onBackground = AppPalette.textPrimary,
+        surface = AppPalette.surfaceRaised,
+        onSurface = AppPalette.textPrimary,
+        surfaceVariant = AppPalette.groupBg,
+        onSurfaceVariant = AppPalette.textSecondary,
+        outline = AppPalette.divider,
+    )
+    val colorScheme = if (darkTheme) dynamicDarkScheme else LightColorScheme
     val appColors = if (darkTheme) darkAppColors else lightAppColors
 
     CompositionLocalProvider(
