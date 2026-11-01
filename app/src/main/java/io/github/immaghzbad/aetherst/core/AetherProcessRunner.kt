@@ -117,6 +117,13 @@ class AetherProcessRunner(private val context: Context) {
             val binaryFile = BinaryManager.prepareBinary(context)
             if (currentAttemptId.get() != attemptId) return@coroutineScope true
 
+            // در حالت GOOL اگر نویز روی OFF باشد، در ایران هندشیک وایرگارد بلاک می‌شود؛ پس خودکار روی balanced قرار می‌گیرد
+            val effectiveNoise = if (config.protocol == AetherProtocol.GOOL && config.noise == AetherNoise.OFF) {
+                AetherNoise.BALANCED.rawValue
+            } else {
+                config.noise.rawValue
+            }
+
             val commandList = mutableListOf<String>()
             commandList.add(binaryFile.absolutePath)
             commandList.add("--bind")
@@ -132,7 +139,7 @@ class AetherProcessRunner(private val context: Context) {
             commandList.add("--scan")
             commandList.add(config.scanMode.rawValue)
             commandList.add("--noize")
-            commandList.add(config.noise.rawValue)
+            commandList.add(effectiveNoise)
 
             val routingFile = writeRoutingFile(config)
             if (routingFile != null) {
@@ -140,7 +147,11 @@ class AetherProcessRunner(private val context: Context) {
                 commandList.add(routingFile.absolutePath)
             }
 
-            val effectiveIp = config.effectiveIpMode()
+            val effectiveIp = if (config.protocol == AetherProtocol.GOOL && config.ipMode == AetherIpMode.AUTO) {
+                AetherIpMode.IPV4
+            } else {
+                config.effectiveIpMode()
+            }
             commandList.add(
                 when (effectiveIp) {
                     AetherIpMode.IPV4 -> "-4"
@@ -317,9 +328,9 @@ class AetherProcessRunner(private val context: Context) {
 
             val env = pb.environment()
             env["AETHER_PROTOCOL"] = config.protocol.rawValue
-            env["AETHER_NOIZE"] = config.noise.rawValue
+            env["AETHER_NOIZE"] = effectiveNoise
             env["AETHER_SCAN"] = config.scanMode.rawValue
-            env["AETHER_IP"] = config.effectiveIpMode().rawValue
+            env["AETHER_IP"] = effectiveIp.rawValue
             env["AETHER_SOCKS"] = bindAddress
             routingFile?.let { env["AETHER_ROUTES_FILE"] = it.absolutePath }
 
@@ -526,7 +537,7 @@ class AetherProcessRunner(private val context: Context) {
             return
         }
 
-        if (lower.contains("masque")) {
+        if (lower.contains("masque") || lower.contains("warp-in-warp") || lower.contains("wireguard")) {
             MimOuterRegex.find(line)?.let { LastMimHops.outer = it.groupValues[1].trim().trimEnd(',', ';') }
             MimReadyRegex.find(line)?.let {
                 LastMimHops.outer = it.groupValues[1].trim().trimEnd(',', ';')
@@ -577,37 +588,27 @@ class AetherProcessRunner(private val context: Context) {
                 if (_connectionStatus.value == ConnectionStatus.STARTING) updateState(ConnectionStatus.VALIDATING, attemptId)
             }
             lower.contains("tls established") || lower.contains("tls handshake complete") -> {
-                if (protocol == AetherProtocol.MASQUE || protocol == AetherProtocol.WG) {
-                    updateState(ConnectionStatus.VALIDATING, attemptId)
-                }
+                updateState(ConnectionStatus.VALIDATING, attemptId)
             }
             lower.contains("connect-ip status: 200") || lower.contains("connect-ip established") -> {
                 quickRetryPending.set(false)
                 dataPlaneOk = true
                 updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
             }
-            protocol == AetherProtocol.GOOL -> {
-                if (lower.contains("outer") && (lower.contains("tunnel validated") || lower.contains("handshake complete") || lower.contains("connected"))) {
-                    goolOuterValidated = true
-                    updateState(ConnectionStatus.VALIDATING, attemptId)
-                }
-                if ((lower.contains("inner") && (lower.contains("tunnel validated") || lower.contains("handshake complete"))) ||
-                    lower.contains("gool tunnel validated") ||
-                    lower.contains("wiw tunnel validated") ||
-                    lower.contains("warp-in-warp tunnel validated") ||
-                    (goolOuterValidated && lower.contains("tunnel validated") && !lower.contains("outer"))
-                ) {
-                    quickRetryPending.set(false)
-                    dataPlaneOk = true
-                    updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
-                }
+            protocol == AetherProtocol.GOOL && lower.contains("outer") && lower.contains("tunnel validated") && !lower.contains("inner") -> {
+                goolOuterValidated = true
+                updateState(ConnectionStatus.VALIDATING, attemptId)
             }
-            lower.contains("tunnel validated") || lower.contains("data-plane verification passed") || lower.contains("data plane verification passed") || lower.contains("handshake complete") -> {
-                if (protocol != AetherProtocol.GOOL) {
-                    quickRetryPending.set(false)
-                    dataPlaneOk = true
-                    updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
-                }
+            // رفع باگ GOOL: به محض تایید نهایی تونل (tunnel validated یا data-plane verification passed یا warp-in-warp ready) وضعیت تایید شود
+            lower.contains("tunnel validated") ||
+                lower.contains("data-plane verification passed") ||
+                lower.contains("data plane verification passed") ||
+                lower.contains("warp-in-warp ready") ||
+                lower.contains("wiw ready") ||
+                lower.contains("gool ready") -> {
+                quickRetryPending.set(false)
+                dataPlaneOk = true
+                updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
             }
             lower.contains("socks") && lower.contains("listening") -> {
                 if (dataPlaneOk) {
@@ -644,7 +645,6 @@ class AetherProcessRunner(private val context: Context) {
         }
     }
 
-    // پشتیبانی کامل از هر دو بخش [block] و [direct] در اندروید
     private fun writeRoutingFile(config: AetherConfig): java.io.File? {
         val rules = config.routingRules
         val block = rules.filter { it.mode == RoutingMode.BLOCK }
