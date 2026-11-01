@@ -234,7 +234,7 @@ private fun DashboardContent(viewModel: AetherViewModel, scaleFactor: Float, pla
         if (target == Screen.Settings.tabIndex) {
             currentSettingsPage = null
         }
-        scope.launch { pagerState.animateScrollToPage(target) }
+        scope.launch { pagerState.scrollToPage(target) }
     }
 
     // مدیریت هوشمند دکمه برگشت:
