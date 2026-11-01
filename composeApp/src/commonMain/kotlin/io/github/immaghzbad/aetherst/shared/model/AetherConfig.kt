@@ -256,8 +256,9 @@ data class AetherConfig(
     val maxClients: Int = 0,
     val pingUrl: String = "https://www.gstatic.com/generate_204",
     val ipInfoProvider: IpInfoProvider = IpInfoProvider.AUTO,
-    val connectButtonStyle: String = "swipe",
-    val appLanguage: String = "auto"
+    val connectButtonStyle: String = "capsule",
+    val appLanguage: String = "auto",
+    val appTheme: String = "default"
 ) {
     fun zeroTrustError(): String? {
         if (protocol != AetherProtocol.ZERO_TRUST) return null
