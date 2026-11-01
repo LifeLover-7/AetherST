@@ -287,9 +287,9 @@ private fun DashboardContent(viewModel: AetherViewModel, scaleFactor: Float, pla
                         onRefreshIpInfo = { viewModel.refreshIpInfo() },
                         onRefreshPing = { viewModel.refreshPing() },
                         onCopy = { viewModel.copyToClipboard(it) },
-                        onOpenSettingsToZeroTrust = {
-                            currentSettingsPage = SettingsPage.ZEROTRUST
-                            scope.launch { pagerState.animateScrollToPage(Screen.Settings.tabIndex!!) }
+                        onOpenSettingsToProtocol = {
+                            currentSettingsPage = SettingsPage.PROTOCOL
+                            scope.launch { pagerState.scrollToPage(Screen.Settings.tabIndex!!) }
                         },
                         appVersion = viewModel.appVersion,
                         bottomContentPadding = totalNavBarHeight,
