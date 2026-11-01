@@ -1,8 +1,6 @@
 package io.github.immaghzbad.aetherst.core
 
 import android.content.Context
-import io.github.immaghzbad.aetherst.core.PsiphonController
-import io.github.immaghzbad.aetherst.core.TorController
 import io.github.immaghzbad.aetherst.shared.data.LogRepository
 import io.github.immaghzbad.aetherst.shared.model.*
 import kotlinx.coroutines.CancellationException
@@ -26,7 +24,6 @@ import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
-import kotlinx.coroutines.sync.Mutex
 import kotlin.time.Duration.Companion.milliseconds
 
 object LastMimHops {
@@ -63,6 +60,7 @@ class AetherProcessRunner(private val context: Context) {
             if (runnerJob?.isActive == true) return
 
             val attemptId = currentAttemptId.incrementAndGet()
+            goolOuterValidated = false
             updateState(ConnectionStatus.STARTING, attemptId)
             runnerJob = scope.launch {
                 var retryCount = 0
@@ -81,7 +79,6 @@ class AetherProcessRunner(private val context: Context) {
 
                     if (retryCount > 0) {
                         val waitTime = if (quickRetryPending.compareAndSet(true, false)) {
-                            LogRepository.i("Recovering connection (Quick retry after cached gateway loss)...")
                             3000L
                         } else {
                             (retryCount * 1000L).coerceAtMost(10000L)
@@ -98,7 +95,6 @@ class AetherProcessRunner(private val context: Context) {
                     try {
                         val result = runBinary(config, attemptId, bindAddress, onCodeRequired, inputProvider)
                         if (currentAttemptId.get() != attemptId) break
-                        
                         if (!result) {
                             LogRepository.e("Stability check failed. Retrying...")
                         }
@@ -126,6 +122,18 @@ class AetherProcessRunner(private val context: Context) {
             commandList.add("--bind")
             commandList.add(bindAddress)
 
+            when (config.protocol) {
+                AetherProtocol.MASQUE -> commandList.add("--masque")
+                AetherProtocol.WG -> commandList.add("--wg")
+                AetherProtocol.GOOL -> commandList.add("--gool")
+                AetherProtocol.ZERO_TRUST -> {}
+            }
+
+            commandList.add("--scan")
+            commandList.add(config.scanMode.rawValue)
+            commandList.add("--noize")
+            commandList.add(config.noise.rawValue)
+
             val routingFile = writeRoutingFile(config)
             if (routingFile != null) {
                 commandList.add("--routes")
@@ -138,52 +146,63 @@ class AetherProcessRunner(private val context: Context) {
                     AetherIpMode.IPV4 -> "-4"
                     AetherIpMode.IPV6 -> "-6"
                     else -> "--dual"
-                },
+                }
             )
 
-            if (config.h2Mode) commandList.add("--h2")
-            if (config.echEnabled) commandList.add("--ech")
-            if (config.echEnabled) commandList.add("auto")
-            
+            val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.ZERO_TRUST
+            if (isMasqueBased) {
+                if (config.h2Mode) commandList.add("--h2")
+                if (config.echEnabled) {
+                    commandList.add("--ech")
+                    commandList.add("auto")
+                }
+                if (config.h2Fragment) {
+                    commandList.add("--fragment")
+                    commandList.add("--fragment-size")
+                    commandList.add(config.fragmentSize)
+                    commandList.add("--fragment-delay")
+                    commandList.add(config.fragmentDelay)
+                }
+            }
+
             if (config.httpProxyEnabled) {
                 val httpBindHost = bindAddress.substringBefore(':')
                 commandList.add("--http-proxy")
                 commandList.add("$httpBindHost:${config.httpPort}")
             }
 
-            if (config.h2Fragment) {
-                commandList.add("--fragment")
-                commandList.add("--fragment-size")
-                commandList.add(config.fragmentSize)
-                commandList.add("--fragment-delay")
-                commandList.add(config.fragmentDelay)
-            }
             if (config.noDataCheck) commandList.add("--no-data-check")
             if (config.quickReconnect) commandList.add("--quick-reconnect") else commandList.add("--no-quick-reconnect")
 
             val wiwOuter = if (config.protocol == AetherProtocol.GOOL) config.wiwOuter.trim() else ""
             val wiwInner = if (config.protocol == AetherProtocol.GOOL) config.wiwInner.trim() else ""
-            val hasWiwManual = wiwOuter.isNotEmpty() || wiwInner.isNotEmpty()
-            val effectivePeerForCmd = if (!hasWiwManual && (config.protocol == AetherProtocol.WG || config.protocol == AetherProtocol.GOOL) && config.wgPeer.isNotEmpty()) config.wgPeer else if (!hasWiwManual) config.peer else ""
-            if (effectivePeerForCmd.isNotEmpty()) {
-                commandList.add("--peer")
-                commandList.add(effectivePeerForCmd)
-            }
-            if (!hasWiwManual && (config.protocol == AetherProtocol.WG || config.protocol == AetherProtocol.GOOL) && effectivePeerForCmd.isNotEmpty()) {
-                commandList.add("--wg-peer")
-                commandList.add(effectivePeerForCmd)
-            }
-            if (config.protocol == AetherProtocol.GOOL) {
-                if (wiwOuter.isNotEmpty()) {
-                    commandList.add("--wiw-outer")
-                    commandList.add(wiwOuter)
+
+            when (config.protocol) {
+                AetherProtocol.GOOL -> {
+                    if (wiwOuter.isNotEmpty()) {
+                        commandList.add("--wg-peer")
+                        commandList.add(wiwOuter)
+                    }
+                    if (wiwInner.isNotEmpty()) {
+                        commandList.add("--peer")
+                        commandList.add(wiwInner)
+                    }
                 }
-                if (wiwInner.isNotEmpty()) {
-                    commandList.add("--wiw-inner")
-                    commandList.add(wiwInner)
+                AetherProtocol.WG -> {
+                    val wgPeer = config.wgPeer.trim().ifEmpty { config.peer.trim() }
+                    if (wgPeer.isNotEmpty()) {
+                        commandList.add("--peer")
+                        commandList.add(wgPeer)
+                        commandList.add("--wg-peer")
+                        commandList.add(wgPeer)
+                    }
                 }
-                if (!hasWiwManual && config.wiwScan && effectivePeerForCmd.isEmpty()) {
-                    commandList.add("--wiw-scan")
+                else -> {
+                    val peer = config.peer.trim()
+                    if (peer.isNotEmpty()) {
+                        commandList.add("--peer")
+                        commandList.add(peer)
+                    }
                 }
             }
 
@@ -199,7 +218,7 @@ class AetherProcessRunner(private val context: Context) {
 
             commandList.add("--validate-secs")
             commandList.add(config.validateSecs.toString())
-            
+
             commandList.add("--reconnect-secs")
             commandList.add(config.reconnectSecs.toString())
 
@@ -226,9 +245,7 @@ class AetherProcessRunner(private val context: Context) {
                         commandList.add(config.accessEmail)
                     }
                 }
-                if (config.useGateway) {
-                    commandList.add("--gateway")
-                }
+                if (config.useGateway) commandList.add("--gateway")
             }
 
             if (config.dnsEnabled && config.dnsList.isNotEmpty()) {
@@ -239,7 +256,7 @@ class AetherProcessRunner(private val context: Context) {
             if (config.upstreamProxyEnabled && config.upstreamProxy.isNotEmpty()) {
                 commandList.add("--upstream")
                 commandList.add(config.upstreamProxy)
-                if (config.upstreamProxy.startsWith("http://", ignoreCase = true)) commandList.add("--h2")
+                if (config.upstreamProxy.startsWith("http://", ignoreCase = true) && isMasqueBased) commandList.add("--h2")
             }
 
             if (config.torEnabled) {
@@ -263,18 +280,15 @@ class AetherProcessRunner(private val context: Context) {
                     commandList.add("--tor-bridge")
                     commandList.add(it)
                 }
-                if (config.torPtDir.isNotBlank()) {
-                    commandList.add("--tor-pt-dir")
-                    commandList.add(config.torPtDir.trim())
-                } else {
-                    commandList.add("--tor-pt-dir")
-                    commandList.add(torDir.absolutePath)
-                }
+                val ptDir = config.torPtDir.trim().ifEmpty { torDir.absolutePath }
+                commandList.add("--tor-pt-dir")
+                commandList.add(ptDir)
                 config.torPtBinaries.split(";", "\n").map { it.trim() }.filter { it.isNotEmpty() }.forEach {
                     commandList.add("--tor-pt")
                     commandList.add(it)
                 }
             }
+
             val mimActive = config.protocol == AetherProtocol.MASQUE && config.mimEnabled
             val hasMimManual = config.mimOuter.isNotBlank() || config.mimInner.isNotBlank()
             if (mimActive) {
@@ -288,21 +302,15 @@ class AetherProcessRunner(private val context: Context) {
                     commandList.add(config.mimInner.trim())
                 }
                 if (config.mimScan && !hasMimManual) commandList.add("--mim-scan")
-                if (hasMimManual) {
-                    LogRepository.i("[MIM] manual mode outer=${config.mimOuter.trim().ifEmpty { "auto" }} inner=${config.mimInner.trim().ifEmpty { "auto" }}")
-                } else if (config.mimScan) {
-                    LogRepository.i("[MIM] full-scan mode")
-                } else {
-                    LogRepository.i("[MIM] auto mode without scan flag")
-                }
-            } else if (config.mimEnabled) {
-                LogRepository.w("MIM ignored because it is MASQUE-only (protocol=${config.protocol.rawValue})")
             }
+
             if (!config.quicV2Probe) commandList.add("--no-quic-v2")
             if (config.firewallMark.isNotBlank()) {
                 commandList.add("--mark")
                 commandList.add(config.firewallMark.trim())
             }
+
+            val logLevelArg = if (config.coreLogLevel == AetherLogLevel.DEBUG) "debug" else "info"
 
             val pb = ProcessBuilder(commandList)
             pb.directory(context.filesDir)
@@ -313,21 +321,21 @@ class AetherProcessRunner(private val context: Context) {
             env["AETHER_SCAN"] = config.scanMode.rawValue
             env["AETHER_IP"] = config.effectiveIpMode().rawValue
             env["AETHER_SOCKS"] = bindAddress
-
             routingFile?.let { env["AETHER_ROUTES_FILE"] = it.absolutePath }
 
-            if (config.h2Mode) env["AETHER_MASQUE_HTTP2"] = "1"
-            if (config.echEnabled) env["AETHER_ECH"] = "auto"
-            
+            if (isMasqueBased) {
+                if (config.h2Mode) env["AETHER_MASQUE_HTTP2"] = "1"
+                if (config.echEnabled) env["AETHER_ECH"] = "auto"
+                if (config.h2Fragment) {
+                    env["AETHER_MASQUE_H2_FRAGMENT"] = "1"
+                    env["AETHER_MASQUE_H2_FRAGMENT_SIZE"] = config.fragmentSize
+                    env["AETHER_MASQUE_H2_FRAGMENT_DELAY"] = config.fragmentDelay
+                }
+            }
+
             if (config.httpProxyEnabled) {
                 val httpBindHost = bindAddress.substringBefore(':')
                 env["AETHER_HTTP_PROXY"] = "$httpBindHost:${config.httpPort}"
-            }
-
-            if (config.h2Fragment) {
-                env["AETHER_MASQUE_H2_FRAGMENT"] = "1"
-                env["AETHER_MASQUE_H2_FRAGMENT_SIZE"] = config.fragmentSize
-                env["AETHER_MASQUE_H2_FRAGMENT_DELAY"] = config.fragmentDelay
             }
 
             if (config.noDataCheck) {
@@ -335,20 +343,24 @@ class AetherProcessRunner(private val context: Context) {
                 env["AETHER_WG_NO_DATA_CHECK"] = "1"
             }
 
-            if (config.quickReconnect) env["AETHER_QUICK_RECONNECT"] = "1" else env["AETHER_QUICK_RECONNECT"] = "0"
+            env["AETHER_QUICK_RECONNECT"] = if (config.quickReconnect) "1" else "0"
 
-            if (config.protocol == AetherProtocol.WG || config.protocol == AetherProtocol.GOOL) {
-                if (!hasWiwManual) {
-                    if (config.wgPeer.isNotEmpty()) env["AETHER_WG_PEER"] = config.wgPeer else if (config.peer.isNotEmpty()) env["AETHER_WG_PEER"] = config.peer
-                    if (config.peer.isNotEmpty()) env["AETHER_PEER"] = config.peer
-                }
-                if (config.protocol == AetherProtocol.GOOL) {
+            when (config.protocol) {
+                AetherProtocol.GOOL -> {
                     if (wiwOuter.isNotEmpty()) env["AETHER_WIW_OUTER_PEER"] = wiwOuter
                     if (wiwInner.isNotEmpty()) env["AETHER_WIW_INNER_PEER"] = wiwInner
-                    if (!hasWiwManual && config.wiwScan && effectivePeerForCmd.isEmpty()) env["AETHER_WIW_PEERS"] = "auto"
+                    if (wiwOuter.isEmpty() && wiwInner.isEmpty()) env["AETHER_WIW_PEERS"] = "auto"
                 }
-            } else {
-                if (config.peer.isNotEmpty()) env["AETHER_PEER"] = config.peer
+                AetherProtocol.WG -> {
+                    val wgPeer = config.wgPeer.trim().ifEmpty { config.peer.trim() }
+                    if (wgPeer.isNotEmpty()) {
+                        env["AETHER_WG_PEER"] = wgPeer
+                        env["AETHER_PEER"] = wgPeer
+                    }
+                }
+                else -> {
+                    if (config.peer.isNotEmpty()) env["AETHER_PEER"] = config.peer
+                }
             }
 
             env["AETHER_WG_KEEPALIVE"] = if (config.keepaliveEnabled) config.keepalive.toString() else "0"
@@ -378,14 +390,7 @@ class AetherProcessRunner(private val context: Context) {
                 }
                 if (config.useGateway) env["AETHER_GATEWAY"] = "1"
             }
-            routingFile?.let {
-                try {
-                    it.setReadable(false, false)
-                    it.setReadable(true, true)
-                    it.setWritable(false, false)
-                    it.setWritable(true, true)
-                } catch (_: Exception) {}
-            }
+
             if (config.dnsEnabled && config.dnsList.isNotEmpty()) env["AETHER_DNS"] = config.dnsList
             if (config.upstreamProxyEnabled && config.upstreamProxy.isNotEmpty()) env["AETHER_UPSTREAM"] = config.upstreamProxy
             if (config.torEnabled) {
@@ -427,10 +432,9 @@ class AetherProcessRunner(private val context: Context) {
             env["AETHER_REPROVISION"] = if (config.reprovision) "1" else "0"
 
             env["AETHER_PERF_PROFILE"] = config.perfProfile.rawValue
-            env["AETHER_LOG_LEVEL"] = config.coreLogLevel.rawValue
+            env["AETHER_LOG_LEVEL"] = logLevelArg
 
             pb.redirectErrorStream(true)
-
             proc = withContext(Dispatchers.IO) { pb.start() }
 
             synchronized(lock) {
@@ -450,15 +454,9 @@ class AetherProcessRunner(private val context: Context) {
                             writer.write(text)
                             writer.newLine()
                             writer.flush()
-                            LogRepository.d("Sent input to binary")
                         }
                     }
-                } catch (_: CancellationException) {
-                } catch (exception: Exception) {
-                    if (currentCoroutineContext().isActive && currentAttemptId.get() == attemptId) {
-                        LogRepository.w("Process input pipe closed: ${exception.localizedMessage}")
-                    }
-                }
+                } catch (_: Exception) {}
             }
 
             BufferedReader(InputStreamReader(proc!!.inputStream)).use { reader ->
@@ -492,7 +490,7 @@ class AetherProcessRunner(private val context: Context) {
             synchronized(lock) {
                 if (process === proc) process = null
             }
-            try { proc?.destroyForcibly() } catch (e: Exception) { LogRepository.w("destroyForcibly failed: ${e.message}") }
+            try { proc?.destroyForcibly() } catch (_: Exception) {}
         }
     }
 
@@ -511,26 +509,19 @@ class AetherProcessRunner(private val context: Context) {
 
         val isBroken = lower.contains("broken pipe") || lower.contains("stream closed")
         if (isBroken) {
-            val cause = when {
-                lower.contains("upstream") || lower.contains("socks") -> "UPSTREAM_PSIHON_3080_CLOSED"
-                lower.contains("h2") || lower.contains("stream") -> "H2_STREAM_PEER_CLOSED"
-                else -> "BROKEN_PIPE_UNKNOWN"
-            }
-            LogRepository.e("[AetherCore] $cause: $line", "AetherCore")
             if (!PsiphonController.isConnected() && !TorController.isConnected()) {
-                LogRepository.e("[AetherCore] Chain upstream down; delaying reconnect 5s before retry", "AetherCore")
-                delay(5000.milliseconds)
+                delay(3000.milliseconds)
             }
         } else {
             val source = if (lower.contains("tor")) "Tor" else "AetherCore"
             when {
-                lower.contains(" error ") || lower.contains("[error]") -> LogRepository.e(line, source)
+                lower.contains(" error ") || lower.contains("[error]") || lower.startsWith("error:") -> LogRepository.e(line, source)
                 lower.contains(" warn ") || lower.contains("[warn]") -> LogRepository.w(line, source)
                 else -> LogRepository.i(line, source)
             }
         }
 
-        if (isZeroTrustCodePrompt(lower)) {
+        if (protocol == AetherProtocol.ZERO_TRUST && isZeroTrustCodePrompt(lower)) {
             onCodeRequired()
             return
         }
@@ -563,9 +554,9 @@ class AetherProcessRunner(private val context: Context) {
         val isCriticalError = (lower.contains("fatal") || lower.contains("panic")) &&
                 !lower.contains("socksbridge") &&
                 !lower.contains("connection failed")
-        
-        val isLost = lower.contains("tunnel lost") || 
-                     lower.contains("handshake timeout") || 
+
+        val isLost = lower.contains("tunnel lost") ||
+                     lower.contains("handshake timeout") ||
                      lower.contains("handshake failed") ||
                      lower.contains("connection refused") ||
                      lower.contains("all gateways failed") ||
@@ -586,25 +577,32 @@ class AetherProcessRunner(private val context: Context) {
                 if (_connectionStatus.value == ConnectionStatus.STARTING) updateState(ConnectionStatus.VALIDATING, attemptId)
             }
             lower.contains("tls established") || lower.contains("tls handshake complete") -> {
-                if (protocol == AetherProtocol.MASQUE) updateState(ConnectionStatus.VALIDATING, attemptId)
-                else if (protocol == AetherProtocol.WG) updateState(ConnectionStatus.VALIDATING, attemptId)
+                if (protocol == AetherProtocol.MASQUE || protocol == AetherProtocol.WG) {
+                    updateState(ConnectionStatus.VALIDATING, attemptId)
+                }
             }
             lower.contains("connect-ip status: 200") || lower.contains("connect-ip established") -> {
                 quickRetryPending.set(false)
                 dataPlaneOk = true
                 updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
             }
-            protocol == AetherProtocol.GOOL && lower.contains("tunnel validated") -> {
-                if (lower.contains("outer") && lower.contains("tunnel validated")) {
+            protocol == AetherProtocol.GOOL -> {
+                if (lower.contains("outer") && (lower.contains("tunnel validated") || lower.contains("handshake complete") || lower.contains("connected"))) {
                     goolOuterValidated = true
                     updateState(ConnectionStatus.VALIDATING, attemptId)
-                } else if (lower.contains("inner") && lower.contains("tunnel validated") && goolOuterValidated) {
+                }
+                if ((lower.contains("inner") && (lower.contains("tunnel validated") || lower.contains("handshake complete"))) ||
+                    lower.contains("gool tunnel validated") ||
+                    lower.contains("wiw tunnel validated") ||
+                    lower.contains("warp-in-warp tunnel validated") ||
+                    (goolOuterValidated && lower.contains("tunnel validated") && !lower.contains("outer"))
+                ) {
                     quickRetryPending.set(false)
                     dataPlaneOk = true
                     updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
                 }
             }
-            lower.contains("tunnel validated") || lower.contains("data-plane verification passed") || lower.contains("data plane verification passed") -> {
+            lower.contains("tunnel validated") || lower.contains("data-plane verification passed") || lower.contains("data plane verification passed") || lower.contains("handshake complete") -> {
                 if (protocol != AetherProtocol.GOOL) {
                     quickRetryPending.set(false)
                     dataPlaneOk = true
@@ -614,11 +612,8 @@ class AetherProcessRunner(private val context: Context) {
             lower.contains("socks") && lower.contains("listening") -> {
                 if (dataPlaneOk) {
                     updateState(ConnectionStatus.SOCKS_READY, attemptId)
-                } else {
-                    LogRepository.i("[AetherCore] socks listening before data-plane validation; deferring SOCKS_READY", "AetherCore")
                 }
             }
-
             lower.contains("reconnecting") || isLost -> {
                 if (isReconnecting.compareAndSet(false, true)) {
                     goolOuterValidated = false
@@ -649,11 +644,13 @@ class AetherProcessRunner(private val context: Context) {
         }
     }
 
+    // پشتیبانی کامل از هر دو بخش [block] و [direct] در اندروید
     private fun writeRoutingFile(config: AetherConfig): java.io.File? {
         val rules = config.routingRules
         val block = rules.filter { it.mode == RoutingMode.BLOCK }
+        val direct = rules.filter { it.mode == RoutingMode.DIRECT }
 
-        if (block.isEmpty()) return null
+        if (block.isEmpty() && direct.isEmpty()) return null
 
         return try {
             val file = java.io.File(context.filesDir, "routing.ast")
@@ -662,6 +659,12 @@ class AetherProcessRunner(private val context: Context) {
             if (block.isNotEmpty()) {
                 content.append("[block]\n")
                 block.forEach { content.append(formatRoutingPattern(it.pattern)).append("\n") }
+                content.append("\n")
+            }
+
+            if (direct.isNotEmpty()) {
+                content.append("[direct]\n")
+                direct.forEach { content.append(formatRoutingPattern(it.pattern)).append("\n") }
                 content.append("\n")
             }
 
@@ -675,7 +678,7 @@ class AetherProcessRunner(private val context: Context) {
 
     private fun formatRoutingPattern(pattern: String): String {
         val trimmed = pattern.trim()
-        if (trimmed.startsWith("domain:") || trimmed.startsWith("ip:") || 
+        if (trimmed.startsWith("domain:") || trimmed.startsWith("ip:") ||
             trimmed.startsWith("keyword:") || trimmed.startsWith("regexp:") ||
             trimmed == "private") {
             return trimmed
@@ -683,17 +686,18 @@ class AetherProcessRunner(private val context: Context) {
 
         val isIp = trimmed.all { it.isDigit() || it == '.' || it == ':' || it == '/' || (it.lowercaseChar() in 'a'..'f') } &&
                 (trimmed.contains('.') || trimmed.contains(':'))
-        
+
         return if (isIp) "ip:$trimmed" else "domain:$trimmed"
     }
 
     fun stop() {
         currentAttemptId.incrementAndGet()
+        goolOuterValidated = false
         LastMimHops.clear()
         _connectionStatus.value = ConnectionStatus.STOPPED
 
-        var jobToCancel: Job? = null
-        var procToDestroy: Process? = null
+        var jobToCancel: Job?
+        var procToDestroy: Process?
 
         synchronized(lock) {
             jobToCancel = runnerJob
