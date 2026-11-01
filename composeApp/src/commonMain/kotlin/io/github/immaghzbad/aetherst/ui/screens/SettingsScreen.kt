@@ -191,76 +191,78 @@ fun SettingsScreen(
         if (newPage == null) onSubPageClosed()
     }
 
+    // ذخیره محل اسکرول لیست اصلی تنظیمات تا با زدن دکمه برگشت به بالای لیست نپرد
+    val mainListState = rememberLazyListState()
+
     LaunchedEffect(initialPage) {
         if (initialPage != null) setPage(initialPage)
     }
 
     val isAndroid = remember { try { Class.forName("android.os.Build"); true } catch(_: Throwable) { false } }
 
-    Crossfade(targetState = activePage, animationSpec = tween(220), label = "settingsPageTransition") { page ->
-        if (page != null) {
-            SettingsSubPage(
-                page = page,
-                config = config,
-                isBatteryOptimized = isBatteryOptimized,
-                onBack = { setPage(null) },
-                onUpdateConfig = onUpdateConfig,
-                onUpdateTunnelEngine = onUpdateTunnelEngine,
-                onApplyPreset = onApplyPreset,
-                onOpenSplitTunneling = onOpenSplitTunneling,
-                onOpenRoutingRules = onOpenRoutingRules,
-                onRequestBatteryOptimization = onRequestBatteryOptimization,
-                onOpenVpnSettings = onOpenVpnSettings,
-                onResetAll = onResetAll,
-                onExportBackup = onExportBackup,
-                onImportBackup = onImportBackup,
-                onOptimizeMtu = onOptimizeMtu,
-                isOptimizingMtu = isOptimizingMtu,
-                onShowToast = onShowToast,
-                bottomContentPadding = bottomContentPadding,
-                onOpenDnsOptimizer = onOpenDnsOptimizer
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().background(AppPalette.surfaceSunken),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomContentPadding + 12.dp, top = if (isDesktop) 12.dp else 36.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                item(key = "header") {
-                    Column(modifier = Modifier.padding(bottom = 4.dp)) {
-                        Text(strings.SETTINGS_TITLE, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 26.sp, lineHeight = 30.sp)
-                        Text(strings.SETTINGS_SUBTITLE, color = IosSecondaryLabel, fontSize = 12.sp)
-                    }
-                }
-                item(key = "tools") {
-                    IosGroupCard {
-                        Column {
-                            IosActionRow(icon = Icons.Default.Speed, iconBg = AppPalette.statusScanning, title = strings.SPEED_TEST_TITLE, subtitle = strings.SPEED_TEST_SUBTITLE, onClick = onOpenSpeedTest)
-                            HorizontalDivider(color = IosDividerColor, thickness = 0.5.dp)
-                            IosActionRow(icon = Icons.Default.Radar, iconBg = AppPalette.accent, title = strings.AUTO_DETECT_TITLE, subtitle = strings.AUTO_DETECT_SUBTITLE, onClick = onOpenAutoDetect)
-                        }
-                    }
-                }
-                item(key = "presets") { CategoryCard(icon = Icons.Default.Tune, iconBg = AppPalette.textSecondary, title = strings.CAT_CONFIGURATION_PROFILES, subtitle = strings.CAT_CONFIGURATION_PROFILES_SUB, onClick = { setPage(SettingsPage.PRESETS) }) }
-                item(key = "connection") { CategoryCard(icon = Icons.Default.VpnLock, iconBg = AppPalette.statusConnected, title = strings.CAT_CONNECTION_TUNNELING, subtitle = strings.CAT_CONNECTION_TUNNELING_SUB, onClick = { setPage(SettingsPage.CONNECTION) }) }
-                item(key = "protocol") { CategoryCard(icon = Icons.Default.Shield, iconBg = IosActiveBlue, title = strings.CAT_PROTOCOL_TRANSPORT, subtitle = strings.CAT_PROTOCOL_TRANSPORT_SUB, onClick = { setPage(SettingsPage.PROTOCOL) }) }
-                if (config.protocol == AetherProtocol.ZERO_TRUST) {
-                    item(key = "zt") { CategoryCard(icon = Icons.Default.Business, iconBg = AppPalette.accentVariant, title = strings.CAT_ZEROTRUST, subtitle = strings.CAT_ZEROTRUST_SUB, onClick = { setPage(SettingsPage.ZEROTRUST) }) }
-                }
-                item(key = "network") { CategoryCard(icon = Icons.Default.Language, iconBg = IosActiveBlue, title = strings.CAT_NETWORK_PARAMETERS, subtitle = strings.CAT_NETWORK_PARAMETERS_SUB, onClick = { setPage(SettingsPage.NETWORK) }) }
-                item(key = "security") { CategoryCard(icon = Icons.Default.Lock, iconBg = AppPalette.statusError, title = strings.CAT_SECURITY_RELIABILITY, subtitle = strings.CAT_SECURITY_RELIABILITY_SUB, onClick = { setPage(SettingsPage.SECURITY) }) }
-                item(key = "diagnostics") { CategoryCard(icon = Icons.Default.BugReport, iconBg = AppPalette.debugCyan, title = strings.CAT_DIAGNOSTICS_CORE, subtitle = strings.CAT_DIAGNOSTICS_CORE_SUB, onClick = { setPage(SettingsPage.DIAGNOSTICS) }) }
-                if (isAndroid) {
-                    item(key = "hev") { CategoryCard(icon = Icons.Default.Memory, iconBg = AppPalette.accentVariantAlt, title = strings.CAT_HEV_ENGINE, subtitle = strings.CAT_HEV_ENGINE_SUB, onClick = { setPage(SettingsPage.HEV_ENGINE) }) }
-                }
-                item(key = "system") { CategoryCard(icon = Icons.Default.Settings, iconBg = AppPalette.textSecondary, title = strings.CAT_SYSTEM_MAINTENANCE, subtitle = strings.CAT_SYSTEM_MAINTENANCE_SUB, onClick = { setPage(SettingsPage.SYSTEM) }) }
-                item(key = "interface") { CategoryCard(icon = Icons.Default.PhoneAndroid, iconBg = AppPalette.accentVariant, title = strings.CAT_USER_INTERFACE, subtitle = strings.CAT_USER_INTERFACE_SUB, onClick = { setPage(SettingsPage.INTERFACE) }) }
-                item(key = "footer") { Spacer(modifier = Modifier.height(16.dp)) }
+    if (activePage != null) {
+        SettingsSubPage(
+            page = activePage,
+            config = config,
+            isBatteryOptimized = isBatteryOptimized,
+            onBack = { setPage(null) },
+            onUpdateConfig = onUpdateConfig,
+            onUpdateTunnelEngine = onUpdateTunnelEngine,
+            onApplyPreset = onApplyPreset,
+            onOpenSplitTunneling = onOpenSplitTunneling,
+            onOpenRoutingRules = onOpenRoutingRules,
+            onRequestBatteryOptimization = onRequestBatteryOptimization,
+            onOpenVpnSettings = onOpenVpnSettings,
+            onResetAll = onResetAll,
+            onExportBackup = onExportBackup,
+            onImportBackup = onImportBackup,
+            onOptimizeMtu = onOptimizeMtu,
+            isOptimizingMtu = isOptimizingMtu,
+            onShowToast = onShowToast,
+            bottomContentPadding = bottomContentPadding,
+            onOpenDnsOptimizer = onOpenDnsOptimizer
+        )
+        return
+    }
+
+    LazyColumn(
+        state = mainListState,
+        modifier = Modifier.fillMaxSize().background(AppPalette.surfaceSunken),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomContentPadding + 12.dp, top = if (isDesktop) 12.dp else 36.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item(key = "header") {
+            Column(modifier = Modifier.padding(bottom = 4.dp)) {
+                Text(strings.SETTINGS_TITLE, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 26.sp, lineHeight = 30.sp)
+                Text(strings.SETTINGS_SUBTITLE, color = IosSecondaryLabel, fontSize = 12.sp)
             }
         }
+        item(key = "tools") {
+            IosGroupCard {
+                Column {
+                    IosActionRow(icon = Icons.Default.Speed, iconBg = AppPalette.statusScanning, title = strings.SPEED_TEST_TITLE, subtitle = strings.SPEED_TEST_SUBTITLE, onClick = onOpenSpeedTest)
+                    HorizontalDivider(color = IosDividerColor, thickness = 0.5.dp)
+                    IosActionRow(icon = Icons.Default.Radar, iconBg = AppPalette.accent, title = strings.AUTO_DETECT_TITLE, subtitle = strings.AUTO_DETECT_SUBTITLE, onClick = onOpenAutoDetect)
+                }
+            }
+        }
+        item(key = "presets") { CategoryCard(icon = Icons.Default.Tune, iconBg = AppPalette.textSecondary, title = strings.CAT_CONFIGURATION_PROFILES, subtitle = strings.CAT_CONFIGURATION_PROFILES_SUB, onClick = { setPage(SettingsPage.PRESETS) }) }
+        item(key = "connection") { CategoryCard(icon = Icons.Default.VpnLock, iconBg = AppPalette.statusConnected, title = strings.CAT_CONNECTION_TUNNELING, subtitle = strings.CAT_CONNECTION_TUNNELING_SUB, onClick = { setPage(SettingsPage.CONNECTION) }) }
+        item(key = "protocol") { CategoryCard(icon = Icons.Default.Shield, iconBg = IosActiveBlue, title = strings.CAT_PROTOCOL_TRANSPORT, subtitle = strings.CAT_PROTOCOL_TRANSPORT_SUB, onClick = { setPage(SettingsPage.PROTOCOL) }) }
+        if (config.protocol == AetherProtocol.ZERO_TRUST) {
+            item(key = "zt") { CategoryCard(icon = Icons.Default.Business, iconBg = AppPalette.accentVariant, title = strings.CAT_ZEROTRUST, subtitle = strings.CAT_ZEROTRUST_SUB, onClick = { setPage(SettingsPage.ZEROTRUST) }) }
+        }
+        item(key = "network") { CategoryCard(icon = Icons.Default.Language, iconBg = IosActiveBlue, title = strings.CAT_NETWORK_PARAMETERS, subtitle = strings.CAT_NETWORK_PARAMETERS_SUB, onClick = { setPage(SettingsPage.NETWORK) }) }
+        item(key = "security") { CategoryCard(icon = Icons.Default.Lock, iconBg = AppPalette.statusError, title = strings.CAT_SECURITY_RELIABILITY, subtitle = strings.CAT_SECURITY_RELIABILITY_SUB, onClick = { setPage(SettingsPage.SECURITY) }) }
+        item(key = "diagnostics") { CategoryCard(icon = Icons.Default.BugReport, iconBg = AppPalette.debugCyan, title = strings.CAT_DIAGNOSTICS_CORE, subtitle = strings.CAT_DIAGNOSTICS_CORE_SUB, onClick = { setPage(SettingsPage.DIAGNOSTICS) }) }
+        if (isAndroid) {
+            item(key = "hev") { CategoryCard(icon = Icons.Default.Memory, iconBg = AppPalette.accentVariantAlt, title = strings.CAT_HEV_ENGINE, subtitle = strings.CAT_HEV_ENGINE_SUB, onClick = { setPage(SettingsPage.HEV_ENGINE) }) }
+        }
+        item(key = "system") { CategoryCard(icon = Icons.Default.Settings, iconBg = AppPalette.textSecondary, title = strings.CAT_SYSTEM_MAINTENANCE, subtitle = strings.CAT_SYSTEM_MAINTENANCE_SUB, onClick = { setPage(SettingsPage.SYSTEM) }) }
+        item(key = "interface") { CategoryCard(icon = Icons.Default.PhoneAndroid, iconBg = AppPalette.accentVariant, title = strings.CAT_USER_INTERFACE, subtitle = strings.CAT_USER_INTERFACE_SUB, onClick = { setPage(SettingsPage.INTERFACE) }) }
+        item(key = "footer") { Spacer(modifier = Modifier.height(16.dp)) }
     }
 }
-
 @Composable
 private fun CategoryCard(icon: ImageVector, iconBg: Color, title: String, subtitle: String, onClick: () -> Unit) {
     Card(modifier = Modifier.fillMaxWidth().clickable { onClick() }, shape = RoundedCornerShape(14.dp), colors = CardDefaults.cardColors(containerColor = IosCardBg)) {
