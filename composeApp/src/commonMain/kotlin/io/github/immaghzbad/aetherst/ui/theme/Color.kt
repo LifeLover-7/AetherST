@@ -63,7 +63,7 @@ object AppPalette {
 
     val surfaceRaised: Color
         get() = when (currentTheme) {
-            "glass" -> Color(0x991E293B) // حالت شیشه‌ای مات (نیمه‌شفاف سرمه‌ای-یخی)
+            "glass" -> Color(0xF0182235) // ماتِ غلیظ تا منوهای بازشونده با متن زیرشان قاطی نشوند
             "emerald" -> Color(0xFF13221C)
             "amethyst" -> Color(0xFF1C162B)
             "crimson" -> Color(0xFF241418)
