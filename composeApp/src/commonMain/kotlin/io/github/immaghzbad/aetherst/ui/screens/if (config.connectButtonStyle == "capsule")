@@ -45,13 +45,13 @@ import io.github.immaghzbad.aetherst.shared.ui.components.CountryFlag
 import io.github.immaghzbad.aetherst.shared.util.CountryNames
 import kotlinx.coroutines.launch
 
-private val IosCardBg = AppPalette.surfaceRaised
-private val IosGroupBg = AppPalette.divider
-private val IosSecondaryLabel = AppPalette.textSecondary
-private val IosActiveGreen = AppPalette.statusConnected
-private val IosActiveBlue = AppPalette.accent
-private val IosScanningAmber = AppPalette.statusScanning
-private val IosErrorRed = AppPalette.statusError
+private val IosCardBg get() = AppPalette.surfaceRaised
+private val IosGroupBg get() = AppPalette.divider
+private val IosSecondaryLabel get() = AppPalette.textSecondary
+private val IosActiveGreen get() = AppPalette.statusConnected
+private val IosActiveBlue get() = AppPalette.accent
+private val IosScanningAmber get() = AppPalette.statusScanning
+private val IosErrorRed get() = AppPalette.statusError
 
 @Composable
 fun DashboardScreen(
@@ -103,7 +103,7 @@ fun DashboardScreen(
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(AppPalette.surfaceSunken)
     ) {
         val screenWidth = this.maxWidth
         val screenHeight = this.maxHeight
@@ -249,7 +249,7 @@ fun DashboardScreen(
                             true
                         }
                     }
-                    if (config.connectButtonStyle == "capsule") {
+                    if (config.connectButtonStyle != "swipe_manual") {
                         CapsuleConnectButton(
                             connectionStatus = connectionStatus,
                             onToggle = handleToggle,
