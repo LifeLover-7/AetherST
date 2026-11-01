@@ -2,6 +2,9 @@ package io.github.immaghzbad.aetherst.shared.ui.theme
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
@@ -22,9 +25,35 @@ val ScanningAmber = Color(0xFFFFB74D)
 val ErrorRed = Color(0xFFF2B8B5)
 
 object AppPalette {
-    val accent = Color(0xFF007AFF)
-    val accentVariant = Color(0xFF5856D6)
-    val accentVariantAlt = Color(0xFFAF52DE)
+    var currentTheme by mutableStateOf("default")
+
+    val accent: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0xFF38BDF8)
+            "emerald" -> Color(0xFF10B981)
+            "amethyst" -> Color(0xFFA855F7)
+            "crimson" -> Color(0xFFF43F5E)
+            else -> Color(0xFF007AFF)
+        }
+
+    val accentVariant: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0xFF818CF8)
+            "emerald" -> Color(0xFF059669)
+            "amethyst" -> Color(0xFF7E22CE)
+            "crimson" -> Color(0xFFE11D48)
+            else -> Color(0xFF5856D6)
+        }
+
+    val accentVariantAlt: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0xFFC084FC)
+            "emerald" -> Color(0xFF34D399)
+            "amethyst" -> Color(0xFFC084FC)
+            "crimson" -> Color(0xFFFB7185)
+            else -> Color(0xFFAF52DE)
+        }
+
     val onAccent = Color(0xFFFFFFFF)
 
     val statusConnected = Color(0xFF34C759)
@@ -32,18 +61,66 @@ object AppPalette {
     val statusError = Color(0xFFFF3B30)
     val debugCyan = Color(0xFF64D2FF)
 
-    val surfaceRaised = Color(0xFF1C1C1E)
-    val surfaceSunken = Color(0xFF0A0A0D)
-    val groupBg = Color(0xFF2C2C2E)
-    val divider = Color(0xFF2C2C2E)
-    val inactiveTrack = Color(0xFF3A3A3C)
+    val surfaceRaised: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0x991E293B) // حالت شیشه‌ای مات (نیمه‌شفاف سرمه‌ای-یخی)
+            "emerald" -> Color(0xFF13221C)
+            "amethyst" -> Color(0xFF1C162B)
+            "crimson" -> Color(0xFF241418)
+            else -> Color(0xFF1C1C1E)
+        }
+
+    val surfaceSunken: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0xFF090F1C)
+            "emerald" -> Color(0xFF07110D)
+            "amethyst" -> Color(0xFF0D0A14)
+            "crimson" -> Color(0xFF11080A)
+            else -> Color(0xFF000000)
+        }
+
+    val groupBg: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0x24FFFFFF)
+            "emerald" -> Color(0xFF1D332A)
+            "amethyst" -> Color(0xFF2A2140)
+            "crimson" -> Color(0xFF361E24)
+            else -> Color(0xFF2C2C2E)
+        }
+
+    val divider: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0x22FFFFFF)
+            "emerald" -> Color(0xFF1D332A)
+            "amethyst" -> Color(0xFF2A2140)
+            "crimson" -> Color(0xFF361E24)
+            else -> Color(0xFF2C2C2E)
+        }
+
+    val inactiveTrack: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0x38FFFFFF)
+            else -> Color(0xFF3A3A3C)
+        }
 
     val textPrimary = Color(0xFFECECF1)
-    val textSecondary = Color(0xFF8E8E93)
+    val textSecondary: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0xFF94A3B8)
+            else -> Color(0xFF8E8E93)
+        }
 
-    val navBackground = Color(0xFF1C1C1E)
-    val navActive = Color(0xFF007AFF)
-    val navInactive = Color(0xFF8E8E93)
+    val navBackground: Color
+        get() = when (currentTheme) {
+            "glass" -> Color(0xD90F172A)
+            "emerald" -> Color(0xFF13221C)
+            "amethyst" -> Color(0xFF1C162B)
+            "crimson" -> Color(0xFF241418)
+            else -> Color(0xFF1C1C1E)
+        }
+
+    val navActive: Color get() = accent
+    val navInactive: Color get() = textSecondary
 }
 
 @Immutable
@@ -67,25 +144,26 @@ data class AppColors(
     val navInactive: Color,
 )
 
-internal val darkAppColors = AppColors(
-    accent = AppPalette.accent,
-    onAccent = AppPalette.onAccent,
-    accentVariant = AppPalette.accentVariant,
-    debugCyan = AppPalette.debugCyan,
-    surfaceRaised = AppPalette.surfaceRaised,
-    surfaceSunken = AppPalette.surfaceSunken,
-    groupBg = AppPalette.groupBg,
-    divider = AppPalette.divider,
-    inactiveTrack = AppPalette.inactiveTrack,
-    textPrimary = AppPalette.textPrimary,
-    textSecondary = AppPalette.textSecondary,
-    statusConnected = AppPalette.statusConnected,
-    statusScanning = AppPalette.statusScanning,
-    statusError = AppPalette.statusError,
-    navBackground = AppPalette.navBackground,
-    navActive = AppPalette.navActive,
-    navInactive = AppPalette.navInactive,
-)
+internal val darkAppColors: AppColors
+    get() = AppColors(
+        accent = AppPalette.accent,
+        onAccent = AppPalette.onAccent,
+        accentVariant = AppPalette.accentVariant,
+        debugCyan = AppPalette.debugCyan,
+        surfaceRaised = AppPalette.surfaceRaised,
+        surfaceSunken = AppPalette.surfaceSunken,
+        groupBg = AppPalette.groupBg,
+        divider = AppPalette.divider,
+        inactiveTrack = AppPalette.inactiveTrack,
+        textPrimary = AppPalette.textPrimary,
+        textSecondary = AppPalette.textSecondary,
+        statusConnected = AppPalette.statusConnected,
+        statusScanning = AppPalette.statusScanning,
+        statusError = AppPalette.statusError,
+        navBackground = AppPalette.navBackground,
+        navActive = AppPalette.navActive,
+        navInactive = AppPalette.navInactive,
+    )
 
 internal val lightAppColors = AppColors(
     accent = Color(0xFF0A6CFF),
