@@ -34,6 +34,10 @@ jobs:
           java-version: '17'
           cache: 'gradle'
 
+      - name: Accept Android SDK & NDK Licenses
+        run: |
+          yes | "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools/latest/bin/sdkmanager" --licenses || true
+
       - name: Make Gradle Executable
         run: chmod +x gradlew
 
