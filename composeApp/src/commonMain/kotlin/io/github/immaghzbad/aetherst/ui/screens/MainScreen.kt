@@ -103,12 +103,6 @@ fun MainScreen(viewModel: AetherViewModel, onboardingViewModel: OnboardingViewMo
     val crashLog by viewModel.crashLog.collectAsStateWithLifecycle()
     val toastState by viewModel.toastState.collectAsStateWithLifecycle()
 
-    SideEffect {
-        if (AppPalette.currentTheme != config.appTheme) {
-            AppPalette.currentTheme = config.appTheme
-        }
-    }
-
     LaunchedEffect(Unit) {
         viewModel.checkBatteryOptimizationStatus()
     }
@@ -287,6 +281,10 @@ private fun DashboardContent(viewModel: AetherViewModel, scaleFactor: Float, pla
                         onRefreshIpInfo = { viewModel.refreshIpInfo() },
                         onRefreshPing = { viewModel.refreshPing() },
                         onCopy = { viewModel.copyToClipboard(it) },
+                        onOpenSettingsToZeroTrust = {
+                            currentSettingsPage = SettingsPage.ZEROTRUST
+                            scope.launch { pagerState.scrollToPage(Screen.Settings.tabIndex!!) }
+                        },
                         onOpenSettingsToProtocol = {
                             currentSettingsPage = SettingsPage.PROTOCOL
                             scope.launch { pagerState.scrollToPage(Screen.Settings.tabIndex!!) }
