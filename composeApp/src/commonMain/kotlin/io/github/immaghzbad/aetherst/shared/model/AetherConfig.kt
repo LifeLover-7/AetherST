@@ -189,6 +189,9 @@ data class AetherConfig(
     val blockedPackages: Set<String> = emptySet(),
     val tunneledPackages: Set<String> = emptySet(),
     val routingRules: List<RoutingRule> = emptyList(),
+    // Windows/desktop: per-app routing needs a kernel driver, so real bypass is done by
+    // destination (domain/IP). This preset keeps Iranian hosts direct by default.
+    val iranDirectEnabled: Boolean = true,
     val teamName: String = "",
     val accessEmail: String = "",
     val accessId: String = "",

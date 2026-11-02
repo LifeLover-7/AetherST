@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
@@ -19,11 +20,13 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.AltRoute
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoFixHigh
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
@@ -93,7 +96,11 @@ fun SplitTunnelingScreen(
     onBack: () -> Unit,
     scaleFactor: Float = 1f,
     tunneledPackages: Set<String> = emptySet(),
-    onBulkUpdateMode: (List<String>, Int) -> Unit = { _, _ -> }
+    onBulkUpdateMode: (List<String>, Int) -> Unit = { _, _ -> },
+    iranDirectEnabled: Boolean = true,
+    iranDirectCount: Int = 0,
+    onIranDirectChange: (Boolean) -> Unit = {},
+    onOpenRoutingRules: (() -> Unit)? = null
 ) {
     val strings = LocalAppStrings.current
     val focusManager = LocalFocusManager.current
@@ -115,23 +122,35 @@ fun SplitTunnelingScreen(
     }
 
     if (showHelpDialog) {
-        SplitTunnelHelpDialog(visible = animateDialog, onDismiss = { animateDialog = false }, onTransitionEnd = { showHelpDialog = false }, scaleFactor = scaleFactor)
+        SplitTunnelHelpDialog(
+            visible = animateDialog,
+            onDismiss = { animateDialog = false },
+            onTransitionEnd = { showHelpDialog = false },
+            scaleFactor = scaleFactor,
+            desktopCapabilities = isWindowsDesktop
+        )
     }
     LaunchedEffect(showHelpDialog) { if (showHelpDialog) animateDialog = true }
 
+    // On desktop "Bypass" is enforced by destination (routing rules + the Iran-direct
+    // preset), never per application: Windows has no per-app routing without a driver.
     val blockedCount = blockedPackages.size
-    val bypassCount = if (tunnelAllApps) excludedPackages.size else (effectiveApps.size - tunneledPackages.size - blockedCount).coerceAtLeast(0)
-    val tunneledCount = if (tunnelAllApps) (effectiveApps.size - bypassCount - blockedCount).coerceAtLeast(0) else tunneledPackages.size
+    val bypassCount = if (isWindowsDesktop) 0 else if (tunnelAllApps) excludedPackages.size else (effectiveApps.size - tunneledPackages.size - blockedCount).coerceAtLeast(0)
+    val tunneledCount = if (isWindowsDesktop) (effectiveApps.size - blockedCount).coerceAtLeast(0) else if (tunnelAllApps) (effectiveApps.size - bypassCount - blockedCount).coerceAtLeast(0) else tunneledPackages.size
+
+    /** Desktop: per-app "bypass" is not enforceable, so an app is only TUNNEL or BLOCKED. */
+    fun modeOf(app: AppInfo): Int = when {
+        blockedPackages.contains(app.packageName) -> 2
+        isWindowsDesktop -> 1
+        tunnelAllApps -> if (excludedPackages.contains(app.packageName)) 0 else 1
+        else -> if (tunneledPackages.contains(app.packageName)) 1 else 0
+    }
 
     val filteredApps = remember(effectiveApps, searchQuery, selectedTab, excludedPackages, tunneledPackages, blockedPackages, modeFilter, tunnelAllApps) {
         effectiveApps.filter { app ->
             val matchesTab = if (selectedTab == 0) !app.isSystemApp else app.isSystemApp
             val matchesSearch = searchQuery.isEmpty() || app.name.contains(searchQuery, ignoreCase = true) || app.packageName.contains(searchQuery, ignoreCase = true)
-            val mode = when {
-                blockedPackages.contains(app.packageName) -> 2
-                tunnelAllApps -> if (excludedPackages.contains(app.packageName)) 0 else 1
-                else -> if (tunneledPackages.contains(app.packageName)) 1 else 0
-            }
+            val mode = modeOf(app)
             val matchesMode = when (modeFilter) {
                 1 -> mode == 1
                 2 -> mode == 0
@@ -139,13 +158,7 @@ fun SplitTunnelingScreen(
                 else -> true
             }
             matchesTab && matchesSearch && matchesMode
-        }.sortedWith(compareBy<AppInfo> {
-            when {
-                blockedPackages.contains(it.packageName) -> 0
-                tunnelAllApps -> if (excludedPackages.contains(it.packageName)) 1 else 2
-                else -> if (tunneledPackages.contains(it.packageName)) 1 else 2
-            }
-        }.thenBy { it.name.lowercase() })
+        }.sortedWith(compareBy<AppInfo> { modeOf(it) }.thenBy { it.name.lowercase() })
     }
 
     Column(modifier = Modifier.fillMaxSize().background(AppPalette.surfaceSunken).clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { focusManager.clearFocus() }) {
@@ -176,7 +189,8 @@ fun SplitTunnelingScreen(
                             SplitTunnelAppManager.onPickDesktopApp?.invoke { pickedApp ->
                                 if (pickedApp != null) {
                                     selectedTab = 0
-                                    onUpdateMode(pickedApp.packageName, if (tunnelAllApps) 0 else 1)
+                                    // Desktop: an added app is tunneled by default; blocking is explicit.
+                                    onUpdateMode(pickedApp.packageName, 1)
                                 }
                             }
                         }
@@ -225,7 +239,7 @@ fun SplitTunnelingScreen(
             }
         }
 
-        if (tunnelAllApps) {
+        if (!isWindowsDesktop && tunnelAllApps) {
             Row(modifier = Modifier.fillMaxWidth().padding(horizontal = (16 * scaleFactor).dp, vertical = (6 * scaleFactor).dp).background(Color(0xFFFFD60A).copy(alpha = 0.1f), RoundedCornerShape(10.dp)).padding((10 * scaleFactor).dp), verticalAlignment = Alignment.Top) {
                 Icon(Icons.Default.Info, null, tint = Color(0xFFFFD60A), modifier = Modifier.size((16 * scaleFactor).dp))
                 Spacer(modifier = Modifier.width((8 * scaleFactor).dp))
@@ -235,6 +249,16 @@ fun SplitTunnelingScreen(
                 }
             }
         }
+
+        // Desktop: per-app bypass is not possible without a kernel driver, so Bypass is
+        // offered honestly by destination. Block stays per application (firewall based).
+        if (isWindowsDesktop) DesktopBypassCard(
+            iranDirectEnabled = iranDirectEnabled,
+            iranDirectCount = iranDirectCount,
+            onIranDirectChange = onIranDirectChange,
+            onOpenRoutingRules = onOpenRoutingRules,
+            scaleFactor = scaleFactor
+        )
 
         Box(modifier = Modifier.padding(horizontal = (16 * scaleFactor).dp, vertical = (6 * scaleFactor).dp)) {
             BasicTextField(value = searchQuery, onValueChange = { searchQuery = it }, modifier = Modifier.fillMaxWidth().height((40 * scaleFactor).dp).background(IosCardBg, RoundedCornerShape(10.dp)), textStyle = MaterialTheme.typography.bodyMedium.copy(color = Color.White, fontSize = (13 * scaleFactor).sp), keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search), keyboardActions = KeyboardActions(onSearch = { focusManager.clearFocus() }), singleLine = true, cursorBrush = SolidColor(IosActiveBlue), decorationBox = { innerTextField ->
@@ -269,25 +293,47 @@ fun SplitTunnelingScreen(
             }
         }
 
+        // Desktop escape hatch: firewall block rules persist, so offer one-tap unblock.
+        if (isWindowsDesktop && blockedCount > 0) {
+            Row(
+                modifier = Modifier.fillMaxWidth()
+                    .padding(horizontal = (16 * scaleFactor).dp, vertical = (4 * scaleFactor).dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(AppPalette.statusError.copy(alpha = 0.14f))
+                    .clickable {
+                        val unblocked = blockedPackages.toList()
+                        if (unblocked.isNotEmpty()) onBulkUpdateMode(unblocked, 1)
+                        modeFilter = 0
+                    }
+                    .padding(horizontal = (10 * scaleFactor).dp, vertical = (7 * scaleFactor).dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.LockOpen, null, tint = AppPalette.statusError, modifier = Modifier.size((15 * scaleFactor).dp))
+                Spacer(modifier = Modifier.width((6 * scaleFactor).dp))
+                Text(
+                    "رفع مسدودی همه برنامه‌ها ($blockedCount)",
+                    color = AppPalette.statusError,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (11 * scaleFactor).sp
+                )
+            }
+        }
+
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = (16 * scaleFactor).dp, end = (16 * scaleFactor).dp, bottom = (24 * scaleFactor).dp), verticalArrangement = Arrangement.spacedBy((8 * scaleFactor).dp)) {
             items(filteredApps, key = { it.packageName }) { app ->
-                val mode = when {
-                    blockedPackages.contains(app.packageName) -> 2
-                    tunnelAllApps -> if (excludedPackages.contains(app.packageName)) 0 else 1
-                    else -> if (tunneledPackages.contains(app.packageName)) 1 else 0
-                }
                 AppLineItem(
                     app = app,
-                    mode = mode,
+                    mode = modeOf(app),
                     onUpdateMode = { m -> onUpdateMode(app.packageName, m) },
                     onRemoveApp = if (isWindowsDesktop) {
                         {
-                            onUpdateMode(app.packageName, if (tunnelAllApps) 1 else 0)
+                            onUpdateMode(app.packageName, 1)
                             SplitTunnelAppManager.onRemoveApp?.invoke(app.packageName)
                         }
                     } else null,
                     enabled = true,
-                    scaleFactor = scaleFactor
+                    scaleFactor = scaleFactor,
+                    perAppTunnelOnly = isWindowsDesktop
                 )
             }
         }
@@ -301,7 +347,8 @@ private fun AppLineItem(
     onUpdateMode: (Int) -> Unit,
     onRemoveApp: (() -> Unit)? = null,
     enabled: Boolean = true,
-    scaleFactor: Float
+    scaleFactor: Float,
+    perAppTunnelOnly: Boolean = false
 ) {
     val strings = LocalAppStrings.current
     val bg = when (mode) {
@@ -341,19 +388,112 @@ private fun AppLineItem(
                 }
                 Spacer(modifier = Modifier.width((2 * scaleFactor).dp))
             }
-            IconButton(onClick = { if (!enabled) return@IconButton; onUpdateMode(if (mode == 2) 0 else 2) }, modifier = Modifier.size((30 * scaleFactor).dp), enabled = enabled) {
+            IconButton(onClick = {
+                if (!enabled) return@IconButton
+                // Desktop has no per-app bypass, so un-blocking must return to Tunnel.
+                onUpdateMode(when { mode != 2 -> 2; perAppTunnelOnly -> 1; else -> 0 })
+            }, modifier = Modifier.size((30 * scaleFactor).dp), enabled = enabled) {
                 Box(modifier = Modifier.size((26 * scaleFactor).dp).background(if (mode == 2) AppPalette.statusError else Color.White.copy(alpha = 0.08f), RoundedCornerShape(7.dp)), contentAlignment = Alignment.Center) {
                     Icon(Icons.Default.Block, null, tint = if (mode == 2) Color.White else IosSecondaryLabel, modifier = Modifier.size((15 * scaleFactor).dp))
                 }
             }
             Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
-            Switch(checked = mode == 1, onCheckedChange = { checked -> if (!enabled || mode == 2) return@Switch; onUpdateMode(if (checked) 1 else 0) }, enabled = enabled && mode != 2, modifier = Modifier.graphicsLayer { scaleX = 0.75f; scaleY = 0.75f }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = IosActiveBlue, checkedBorderColor = Color.Transparent, uncheckedThumbColor = Color.White, uncheckedTrackColor = IosInactiveTrack, uncheckedBorderColor = Color.Transparent))
+            if (perAppTunnelOnly) {
+                // Desktop cannot bypass a single application (needs a kernel/WFP driver),
+                // so there is no per-app switch here - only Tunnel or Blocked.
+                Box(modifier = Modifier.height((26 * scaleFactor).dp).background(if (mode == 2) AppPalette.statusError.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.06f), RoundedCornerShape(7.dp)).padding(horizontal = (8 * scaleFactor).dp), contentAlignment = Alignment.Center) {
+                    Text(if (mode == 2) strings.SPLIT_BLOCKED_NO_INTERNET else strings.SPLIT_TUNNEL_VPN, color = if (mode == 2) AppPalette.statusError else IosSecondaryLabel, fontSize = (9 * scaleFactor).sp, fontWeight = FontWeight.Medium)
+                }
+            } else {
+                Switch(checked = mode == 1, onCheckedChange = { checked -> if (!enabled || mode == 2) return@Switch; onUpdateMode(if (checked) 1 else 0) }, enabled = enabled && mode != 2, modifier = Modifier.graphicsLayer { scaleX = 0.75f; scaleY = 0.75f }, colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = IosActiveBlue, checkedBorderColor = Color.Transparent, uncheckedThumbColor = Color.White, uncheckedTrackColor = IosInactiveTrack, uncheckedBorderColor = Color.Transparent))
+            }
         }
     }
 }
 
 @Composable
-private fun SplitTunnelHelpDialog(visible: Boolean, onDismiss: () -> Unit, onTransitionEnd: () -> Unit, scaleFactor: Float) {
+private fun DesktopBypassCard(
+    iranDirectEnabled: Boolean,
+    iranDirectCount: Int,
+    onIranDirectChange: (Boolean) -> Unit,
+    onOpenRoutingRules: (() -> Unit)?,
+    scaleFactor: Float
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+            .padding(horizontal = (16 * scaleFactor).dp, vertical = (6 * scaleFactor).dp)
+            .background(IosActiveBlue.copy(alpha = 0.08f), RoundedCornerShape(10.dp))
+            .border(1.dp, IosActiveBlue.copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+            .padding((10 * scaleFactor).dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Public, null, tint = IosActiveGreen, modifier = Modifier.size((16 * scaleFactor).dp))
+            Spacer(modifier = Modifier.width((8 * scaleFactor).dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    "Bypass بر اساس مقصد (دامنه و IP)",
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (12 * scaleFactor).sp,
+                    textAlign = TextAlign.Start
+                )
+                Text(
+                    if (iranDirectEnabled) "دامنه‌ها و IPهای ایرانی مستقیم می‌روند ($iranDirectCount قانون فعال). بقیه از تونل رد می‌شوند."
+                    else "خاموش است؛ همه مقصدها از تونل رد می‌شوند. برای bypass، قوانین Domain/IP را فعال کنید.",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = (11 * scaleFactor).sp,
+                    lineHeight = (15 * scaleFactor).sp,
+                    textAlign = TextAlign.Start
+                )
+            }
+            Spacer(modifier = Modifier.width((6 * scaleFactor).dp))
+            Switch(
+                checked = iranDirectEnabled,
+                onCheckedChange = onIranDirectChange,
+                modifier = Modifier.graphicsLayer { scaleX = 0.75f; scaleY = 0.75f },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = Color.White,
+                    checkedTrackColor = IosActiveGreen,
+                    checkedBorderColor = Color.Transparent,
+                    uncheckedThumbColor = Color.White,
+                    uncheckedTrackColor = IosInactiveTrack,
+                    uncheckedBorderColor = Color.Transparent
+                )
+            )
+        }
+        if (onOpenRoutingRules != null) {
+            Spacer(modifier = Modifier.height((8 * scaleFactor).dp))
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(IosActiveBlue.copy(alpha = 0.18f))
+                    .clickable { onOpenRoutingRules() }
+                    .padding(horizontal = (10 * scaleFactor).dp, vertical = (6 * scaleFactor).dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.AutoMirrored.Filled.AltRoute, null, tint = IosActiveBlue, modifier = Modifier.size((14 * scaleFactor).dp))
+                Spacer(modifier = Modifier.width((6 * scaleFactor).dp))
+                Text(
+                    "قوانین دامنه / IP (Bypass یا Block)",
+                    color = IosActiveBlue,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (11 * scaleFactor).sp
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height((8 * scaleFactor).dp))
+        Text(
+            "در ویندوز، bypass به تفکیک برنامه بدون درایور کرنل ممکن نیست؛ به همین دلیل از این لیست فقط می‌توانید برنامه‌ها را «مسدود (Block)» کنید.",
+            color = Color.White.copy(alpha = 0.55f),
+            fontSize = (10 * scaleFactor).sp,
+            lineHeight = (14 * scaleFactor).sp,
+            textAlign = TextAlign.Start
+        )
+    }
+}
+
+@Composable
+private fun SplitTunnelHelpDialog(visible: Boolean, onDismiss: () -> Unit, onTransitionEnd: () -> Unit, scaleFactor: Float, desktopCapabilities: Boolean = false) {
     val strings = LocalAppStrings.current
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = true, dismissOnClickOutside = true)) {
@@ -369,9 +509,15 @@ private fun SplitTunnelHelpDialog(visible: Boolean, onDismiss: () -> Unit, onTra
                         }
                         Spacer(modifier = Modifier.height((16 * scaleFactor).dp))
                         Column(verticalArrangement = Arrangement.spacedBy((14 * scaleFactor).dp)) {
-                            HelpItem(title = strings.SPLIT_HELP_BYPASS_TITLE, desc = strings.SPLIT_HELP_BYPASS_DESC, icon = Icons.Default.Public, color = IosActiveGreen, scaleFactor = scaleFactor)
-                            HelpItem(title = strings.SPLIT_HELP_TUNNEL_TITLE, desc = strings.SPLIT_HELP_TUNNEL_DESC, icon = Icons.Default.Security, color = IosActiveBlue, scaleFactor = scaleFactor)
-                            HelpItem(title = strings.SPLIT_HELP_BLOCKED_TITLE, desc = strings.SPLIT_HELP_BLOCKED_DESC, icon = Icons.Default.Block, color = AppPalette.statusError, scaleFactor = scaleFactor)
+                            if (desktopCapabilities) {
+                                HelpItem(title = "Bypass بر اساس مقصد", desc = "در ویندوز مسیر هر برنامه قابل تفکیک نیست؛ برای دور زدن تونل، دامنه یا IP مقصد را در قوانین مسیریابی روی حالت Direct بگذارید (پریست ایران از قبل فعال است).", icon = Icons.Default.Public, color = IosActiveGreen, scaleFactor = scaleFactor)
+                                HelpItem(title = strings.SPLIT_HELP_TUNNEL_TITLE, desc = strings.SPLIT_HELP_TUNNEL_DESC, icon = Icons.Default.Security, color = IosActiveBlue, scaleFactor = scaleFactor)
+                                HelpItem(title = strings.SPLIT_HELP_BLOCKED_TITLE, desc = "با فایروال ویندوز به‌صورت per-app اعمال می‌شود؛ برنامه انتخاب‌شده در زمان اتصال هیچ اینترنتی نخواهد داشت.", icon = Icons.Default.Block, color = AppPalette.statusError, scaleFactor = scaleFactor)
+                            } else {
+                                HelpItem(title = strings.SPLIT_HELP_BYPASS_TITLE, desc = strings.SPLIT_HELP_BYPASS_DESC, icon = Icons.Default.Public, color = IosActiveGreen, scaleFactor = scaleFactor)
+                                HelpItem(title = strings.SPLIT_HELP_TUNNEL_TITLE, desc = strings.SPLIT_HELP_TUNNEL_DESC, icon = Icons.Default.Security, color = IosActiveBlue, scaleFactor = scaleFactor)
+                                HelpItem(title = strings.SPLIT_HELP_BLOCKED_TITLE, desc = strings.SPLIT_HELP_BLOCKED_DESC, icon = Icons.Default.Block, color = AppPalette.statusError, scaleFactor = scaleFactor)
+                            }
                         }
                         Spacer(modifier = Modifier.height((16 * scaleFactor).dp))
                         Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth().height((44 * scaleFactor).dp), colors = ButtonDefaults.buttonColors(containerColor = IosActiveBlue, contentColor = Color.White), shape = RoundedCornerShape(12.dp)) { Text(strings.ROUTING_HELP_GOT_IT, fontWeight = FontWeight.Bold, fontSize = (14 * scaleFactor).sp) }

@@ -1,5 +1,6 @@
 package io.github.immaghzbad.aetherst.shared.core
 
+import io.github.immaghzbad.aetherst.shared.data.IranDirectPreset
 import io.github.immaghzbad.aetherst.shared.data.LogRepository
 import io.github.immaghzbad.aetherst.shared.model.*
 import io.github.immaghzbad.aetherst.platform.PlatformContext
@@ -380,8 +381,11 @@ class AetherProcessRunner(private val context: PlatformContext) {
     }
 
     private fun writeRoutingFile(config: AetherConfig): java.io.File? {
-        val block = config.routingRules.filter { it.mode == RoutingMode.BLOCK }
-        val direct = config.routingRules.filter { it.mode == RoutingMode.DIRECT }
+        // The Iran-direct preset is part of the effective rule set on desktop so that a
+        // bypass destination is honoured by the core exactly like a user DIRECT rule.
+        val effectiveRules = IranDirectPreset.effectiveRules(config, systemUtils)
+        val block = effectiveRules.filter { it.mode == RoutingMode.BLOCK }
+        val direct = effectiveRules.filter { it.mode == RoutingMode.DIRECT }
 
         if (block.isEmpty() && direct.isEmpty()) return null
 

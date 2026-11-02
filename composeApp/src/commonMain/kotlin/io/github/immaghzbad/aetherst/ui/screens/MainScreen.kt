@@ -60,6 +60,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.immaghzbad.aetherst.platform.PlatformContext
 import io.github.immaghzbad.aetherst.platform.isDesktop
+import io.github.immaghzbad.aetherst.shared.data.IranDirectPreset
 import io.github.immaghzbad.aetherst.platform.getSystemUtils
 import io.github.immaghzbad.aetherst.platform.getDeviceModel
 import io.github.immaghzbad.aetherst.platform.getOsVersion
@@ -178,6 +179,10 @@ private fun DashboardContent(viewModel: AetherViewModel, scaleFactor: Float, pla
     val ipInfo by viewModel.ipInfo.collectAsStateWithLifecycle()
     val pingState by viewModel.pingState.collectAsStateWithLifecycle()
     val installedApps by viewModel.installedApps.collectAsStateWithLifecycle()
+    // Destination based bypass preset size (desktop only); Android keeps its per-app model.
+    val iranDirectRuleCount = remember(config.iranDirectEnabled) {
+        if (isDesktop && config.iranDirectEnabled) IranDirectPreset.cachedCount() else 0
+    }
     val isBatteryOptimized by viewModel.isBatteryOptimized.collectAsStateWithLifecycle()
     val importConflictRules by viewModel.importConflictRules.collectAsStateWithLifecycle()
     val importErrorMessage by viewModel.importErrorMessage.collectAsStateWithLifecycle()
@@ -346,6 +351,10 @@ private fun DashboardContent(viewModel: AetherViewModel, scaleFactor: Float, pla
                     tunneledPackages = config.tunneledPackages,
                     onUpdateMode = { pkg, mode -> viewModel.updateAppSplitTunnelingMode(pkg, mode) },
                     onBulkUpdateMode = { pkgs, mode -> viewModel.bulkUpdateAppSplitTunnelingMode(pkgs, mode) },
+                    iranDirectEnabled = config.iranDirectEnabled,
+                    iranDirectCount = iranDirectRuleCount,
+                    onIranDirectChange = { viewModel.updateIranDirectEnabled(it) },
+                    onOpenRoutingRules = { navController.navigate(Screen.RoutingRules.route) },
                     onBack = { navController.popBackStack() },
                     scaleFactor = scaleFactor
                 )

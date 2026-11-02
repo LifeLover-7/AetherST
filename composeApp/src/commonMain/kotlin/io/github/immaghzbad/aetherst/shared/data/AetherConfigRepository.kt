@@ -209,6 +209,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             excludedPackages = settings.getStringSet("${prefix}excluded_packages", emptySet()),
             blockedPackages = settings.getStringSet("${prefix}blocked_packages", emptySet()),
             tunneledPackages = settings.getStringSet("${prefix}tunneled_packages", emptySet()),
+            iranDirectEnabled = settings.getBoolean("${prefix}iran_direct_enabled", true),
         ).let { enforceWireGuardConstraints(it) }
     }
 
@@ -450,6 +451,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         settings.putStringSet("${prefix}excluded_packages", cfg.excludedPackages)
         settings.putStringSet("${prefix}blocked_packages", cfg.blockedPackages)
         settings.putStringSet("${prefix}tunneled_packages", cfg.tunneledPackages)
+        settings.putBoolean("${prefix}iran_direct_enabled", cfg.iranDirectEnabled)
     }
 
     fun resetToDefaults() {

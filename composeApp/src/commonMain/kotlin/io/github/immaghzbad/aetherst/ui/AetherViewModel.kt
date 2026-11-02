@@ -10,6 +10,7 @@ import io.github.immaghzbad.aetherst.platform.getVpnController
 import io.github.immaghzbad.aetherst.platform.isDesktop
 import io.github.immaghzbad.aetherst.shared.core.ConnectionController
 import io.github.immaghzbad.aetherst.shared.data.AetherConfigRepository
+import io.github.immaghzbad.aetherst.shared.data.IranDirectPreset
 import io.github.immaghzbad.aetherst.shared.data.IpInfo
 import io.github.immaghzbad.aetherst.shared.data.IpInfoRepository
 import io.github.immaghzbad.aetherst.shared.data.ActiveProxyProvider
@@ -99,6 +100,9 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
         io.github.immaghzbad.aetherst.shared.data.DnsBenchmarkRepository.initialize(getSettings(platformContext))
         LogRepository.i("Initializing AetherST Multiplatform UI...", "AetherSystem")
         ConnectionController.getInstance(platformContext)
+        // The preset is parsed from the bundled asset; wiring the counter here guarantees
+        // every screen (desktop and Android) can show it without owning a SystemUtils.
+        IranDirectPreset.installCountProvider { IranDirectPreset.count(systemUtils) }
         observeConnectionStatus()
         checkBatteryOptimizationStatus()
         checkLastCrash()
@@ -208,6 +212,7 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
         repository.updateConfig(effectiveNewConfig)
         val needsRestart = oldConfig.connectionMode != effectiveNewConfig.connectionMode ||
                 oldConfig.tunnelAllApps != effectiveNewConfig.tunnelAllApps ||
+                oldConfig.iranDirectEnabled != effectiveNewConfig.iranDirectEnabled ||
                 oldConfig.protocol != effectiveNewConfig.protocol ||
                 oldConfig.ipMode != effectiveNewConfig.ipMode ||
                 oldConfig.mtu != effectiveNewConfig.mtu ||
@@ -278,6 +283,18 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
         if (current.tunnelEngine == engine) return
         updateConfig(current.copy(tunnelEngine = engine))
         restartConnection()
+    }
+
+    /** Number of rules contributed by the bundled Iran-direct preset (desktop only). */
+    fun iranDirectRuleCount(): Int = if (isDesktop) IranDirectPreset.cachedCount() else 0
+
+    /** Enables/disables the destination based bypass preset (desktop only). */
+    fun updateIranDirectEnabled(enabled: Boolean) {
+        val current = config.value
+        if (current.iranDirectEnabled == enabled) return
+        // The preset is shipped to the core through routing.ast; updateConfig restarts a
+        // live tunnel because iranDirectEnabled is part of its needsRestart check.
+        updateConfig(current.copy(iranDirectEnabled = enabled))
     }
 
     fun updateAppSplitTunnelingMode(packageName: String, modeOrdinal: Int) {

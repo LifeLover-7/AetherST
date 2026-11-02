@@ -238,6 +238,10 @@ actual object ConnectionController {
                 getSystemUtils(context).setSystemProxy("127.0.0.1", effectiveTargetPort)
             }
 
+            // Per-app BLOCK rules are firewall based and therefore adapter independent;
+            // they are installed for every connection mode and only while connected.
+            runCatching { SplitTunnelEnforcer.apply(effectiveConfig) }
+
             _status.value = ConnectionStatus.RUNNING
             startTimer()
         }
@@ -276,6 +280,7 @@ actual object ConnectionController {
             isPsiphonActive = false
 
             try { getSystemUtils(context).clearSystemProxy() } catch (_: Throwable) {}
+            try { SplitTunnelEnforcer.removeAll() } catch (_: Throwable) {}
             tunnelModeStarted = false
             try { TunHelper.stop() } catch (_: Throwable) {}
         }

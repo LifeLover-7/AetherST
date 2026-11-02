@@ -111,6 +111,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.lazy.rememberLazyListState
 import io.github.immaghzbad.aetherst.platform.isDesktop
+import io.github.immaghzbad.aetherst.shared.data.IranDirectPreset
 import io.github.immaghzbad.aetherst.shared.core.NetworkUtils
 import io.github.immaghzbad.aetherst.shared.model.AetherConfig
 import io.github.immaghzbad.aetherst.shared.model.AetherIpMode
@@ -199,6 +200,10 @@ fun SettingsScreen(
     }
 
     val isAndroid = remember { try { Class.forName("android.os.Build"); true } catch(_: Throwable) { false } }
+    // Desktop bypass is destination based, so surface the preset size instead of a fake per-app count.
+    val iranDirectRuleCount = remember(config.iranDirectEnabled) {
+        if (isDesktop && config.iranDirectEnabled) IranDirectPreset.cachedCount() else 0
+    }
 
     if (activePage != null) {
         SettingsSubPage(
@@ -211,6 +216,7 @@ fun SettingsScreen(
             onApplyPreset = onApplyPreset,
             onOpenSplitTunneling = onOpenSplitTunneling,
             onOpenRoutingRules = onOpenRoutingRules,
+            iranDirectRuleCount = iranDirectRuleCount,
             onRequestBatteryOptimization = onRequestBatteryOptimization,
             onOpenVpnSettings = onOpenVpnSettings,
             onResetAll = onResetAll,
@@ -295,7 +301,8 @@ private fun SettingsSubPage(
     isOptimizingMtu: Boolean,
     onShowToast: (String, Boolean) -> Unit,
     bottomContentPadding: Dp,
-    onOpenDnsOptimizer: () -> Unit = {}
+    onOpenDnsOptimizer: () -> Unit = {},
+    iranDirectRuleCount: Int = 0
 ) {
     var showResetDialog by remember { mutableStateOf(false) }
     var showAdvancedZt by remember { mutableStateOf(false) }
@@ -326,7 +333,7 @@ private fun SettingsSubPage(
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomContentPadding + 12.dp, top = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (page) {
                 SettingsPage.PRESETS -> item { PresetPage(config, onUpdateConfig, onApplyPreset, onShowToast) }
-                SettingsPage.CONNECTION -> item { ConnectionPage(config, isAndroid, onUpdateConfig, onUpdateTunnelEngine, onOpenSplitTunneling, onOpenRoutingRules) }
+                SettingsPage.CONNECTION -> item { ConnectionPage(config, isAndroid, onUpdateConfig, onUpdateTunnelEngine, onOpenSplitTunneling, onOpenRoutingRules, iranDirectRuleCount) }
                 SettingsPage.PROTOCOL -> item { ProtocolPage(config, onUpdateConfig, onOptimizeMtu, isOptimizingMtu) }
                 SettingsPage.ZEROTRUST -> item { ZeroTrustPage(config, showAdvancedZt, onUpdateConfig) { showAdvancedZt = it } }
                 SettingsPage.NETWORK -> item { NetworkPage(config, onUpdateConfig, onShowToast, onOpenDnsOptimizer) }
@@ -425,7 +432,8 @@ private fun ConnectionPage(
     onUpdateConfig: (AetherConfig) -> Unit,
     onUpdateTunnelEngine: (TunnelEngine) -> Unit,
     onOpenSplitTunneling: () -> Unit,
-    onOpenRoutingRules: () -> Unit
+    onOpenRoutingRules: () -> Unit,
+    iranDirectRuleCount: Int = 0
 ) {
     val strings = LocalAppStrings.current
     IosGroupCard {
@@ -454,9 +462,27 @@ private fun ConnectionPage(
                 AppDivider()
                 IosPickerRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.accentVariant, title = strings.TUNNEL_ENGINE, value = config.tunnelEngine.displayName, options = TunnelEngine.entries.map { it.displayName }, onOptionSelected = { onUpdateTunnelEngine(TunnelEngine.entries[it]) })
                 AppDivider()
-                IosSwitchRow(icon = Icons.Default.AllInclusive, iconBg = IosActiveBlue, title = strings.TUNNEL_WHOLE_DEVICE, subtitle = strings.TUNNEL_WHOLE_DEVICE_SUB, checked = config.tunnelAllApps, onCheckedChange = { onUpdateConfig(config.copy(tunnelAllApps = it)) }, testTag = "switch_tunnel_all")
+                IosSwitchRow(
+                    icon = Icons.Default.AllInclusive,
+                    iconBg = IosActiveBlue,
+                    title = strings.TUNNEL_WHOLE_DEVICE,
+                    subtitle = if (isDesktop) {
+                        "همه ترافیک از تونل (به‌جز مقصدهای Direct در قوانین مسیریابی)"
+                    } else {
+                        strings.TUNNEL_WHOLE_DEVICE_SUB
+                    },
+                    checked = config.tunnelAllApps,
+                    // On desktop this switch is informational: traffic is always whole-device
+                    // except destinations marked Direct, so flipping it would be misleading.
+                    enabled = !isDesktop,
+                    onCheckedChange = { onUpdateConfig(config.copy(tunnelAllApps = it)) },
+                    testTag = "switch_tunnel_all"
+                )
                 AppDivider()
-                val activeSplitCount = if (config.tunnelAllApps) {
+                val activeSplitCount = if (isDesktop) {
+                    // Desktop: Bypass is destination based, only per-app Block is real.
+                    if (config.iranDirectEnabled) iranDirectRuleCount + config.blockedPackages.size else config.blockedPackages.size
+                } else if (config.tunnelAllApps) {
                     config.excludedPackages.size + config.blockedPackages.size
                 } else {
                     config.tunneledPackages.size + config.blockedPackages.size

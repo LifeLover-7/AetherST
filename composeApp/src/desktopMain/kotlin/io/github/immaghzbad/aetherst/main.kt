@@ -33,6 +33,7 @@ import io.github.immaghzbad.aetherst.platform.getSystemUtils
 import io.github.immaghzbad.aetherst.shared.App
 import io.github.immaghzbad.aetherst.shared.core.ConnectionController
 import io.github.immaghzbad.aetherst.shared.core.NetworkHealer
+import io.github.immaghzbad.aetherst.shared.core.SplitTunnelEnforcer
 import io.github.immaghzbad.aetherst.shared.data.AetherConfigRepository
 import io.github.immaghzbad.aetherst.desktop.RenderCompat
 import io.github.immaghzbad.aetherst.shared.desktop.AetherTray
@@ -155,6 +156,9 @@ fun main(args: Array<String> = emptyArray()) {
         io.github.immaghzbad.aetherst.shared.desktop.DesktopLogger.i("Main", "Application starting | heal network")
     } catch (_: Throwable) {}
     try { System.err.println("[BOOT] AetherST starting heal network") } catch (_: Throwable) {}
+    // A crash or a hard kill can leave per-app block rules behind; they would silently
+    // cut a user's apps off the network, so sweep them before anything else.
+    try { SplitTunnelEnforcer.removeAllBlocking() } catch (_: Throwable) {}
     try { NetworkHealer.heal() } catch (e: Throwable) {
         try {
             io.github.immaghzbad.aetherst.shared.desktop.DesktopLogger.e("Main", "NetworkHealer failed: ${e.message}")
@@ -205,6 +209,8 @@ fun main(args: Array<String> = emptyArray()) {
             SingleInstanceLock.release()
             runCatching { lockSocket?.close() }
             AetherTray.uninstall()
+            // Firewall rules are persistent, so a hard exit must not leave blocked apps behind.
+            runCatching { SplitTunnelEnforcer.removeAllBlocking() }
             sweepChildProcesses()
             cleanTempFiles()
         }
