@@ -51,6 +51,8 @@ private val IosActiveBlue get() = AppPalette.accent
 private val IosScanningAmber get() = AppPalette.statusScanning
 private val IosErrorRed get() = AppPalette.statusError
 
+private var isInitialThemeLoaded = false
+
 @Composable
 fun DashboardScreen(
     config: AetherConfig,
@@ -70,6 +72,7 @@ fun DashboardScreen(
     onRefreshPing: () -> Unit = {},
     onCopy: (String) -> Unit = {},
     onOpenSettingsToZeroTrust: () -> Unit = {},
+    onOpenSettingsToProtocol: () -> Unit = {},
     bottomContentPadding: Dp = 0.dp,
     platformContext: PlatformContext? = null,
     onSwipeDragging: (Boolean) -> Unit = {}
@@ -84,12 +87,33 @@ fun DashboardScreen(
     val uriHandler = LocalUriHandler.current
     val settings = platformContext?.let { getSettings(it) }
 
+    // بازیابی تم ذخیره‌شده هنگام باز شدن برنامه
     LaunchedEffect(Unit) {
-        if (settings != null && !settings.getBoolean("support_dialog_dismissed", false)) {
-            supportDialogAuto = true
-            showSupportDialog = true
+        if (settings != null) {
+            if (!isInitialThemeLoaded) {
+                isInitialThemeLoaded = true
+                val savedTheme = settings.getString("app_theme_pref", "default")
+                if (savedTheme.isNotEmpty()) {
+                    AppPalette.currentTheme = savedTheme
+                    if (config.appTheme != savedTheme) {
+                        onUpdateConfig(config.copy(appTheme = savedTheme))
+                    }
+                }
+            }
+            if (!settings.getBoolean("support_dialog_dismissed", false)) {
+                supportDialogAuto = true
+                showSupportDialog = true
+            }
         }
     }
+
+    // ذخیره دائمی تم در حافظه گوشی به محض تغییر
+    LaunchedEffect(AppPalette.currentTheme) {
+        if (isInitialThemeLoaded && settings != null && AppPalette.currentTheme.isNotEmpty()) {
+            settings.putString("app_theme_pref", AppPalette.currentTheme)
+        }
+    }
+
     val systemUtils = platformContext?.let { getSystemUtils(it) }
 
     LaunchedEffect(connectionStatus) {
@@ -204,6 +228,7 @@ fun DashboardScreen(
                     onRefreshIpInfo = onRefreshIpInfo,
                     onRefreshPing = onRefreshPing,
                     onCopy = onCopy,
+                    onOpenSettingsToProtocol = onOpenSettingsToProtocol,
                     hideConfigChips = isCompactHeight,
                     scaleFactor = scaleFactor
                 )
@@ -469,6 +494,7 @@ fun IosStatusHeroCard(
     onRefreshIpInfo: () -> Unit = {},
     onRefreshPing: () -> Unit = {},
     onCopy: (String) -> Unit = {},
+    onOpenSettingsToProtocol: () -> Unit = {},
     hideConfigChips: Boolean = false,
     scaleFactor: Float = 1f
 ) {
@@ -525,7 +551,11 @@ fun IosStatusHeroCard(
                         )
                     }
 
-                    Surface(shape = RoundedCornerShape(8.dp), color = IosGroupBg) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = IosGroupBg,
+                        modifier = Modifier.clickable { onOpenSettingsToProtocol() }
+                    ) {
                         val protocolText = if (config.protocol == AetherProtocol.MASQUE) {
                             if (config.h2Mode) "MASQUE (H2)" else "MASQUE (H3)"
                         } else {
@@ -697,10 +727,16 @@ fun IosStatusHeroCard(
                     }
                 }
 
+                // با لمس کادر BYPASS | SPEED | NETWORK مستقیماً منوی Protocol & Transport باز می‌شود
                 if (!hideConfigChips) {
                     Spacer(modifier = Modifier.height((10 * scaleFactor).dp))
                     Row(
-                        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(IosGroupBg).padding(6.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(IosGroupBg)
+                            .clickable { onOpenSettingsToProtocol() }
+                            .padding(6.dp),
                         horizontalArrangement = Arrangement.SpaceAround
                     ) {
                         IosConfigChip(label = "BYPASS", value = config.noise.displayName.split(" ")[0], scaleFactor = scaleFactor)
@@ -1222,7 +1258,7 @@ fun AdminRequiredDialog(
             Card(
                 modifier = Modifier.widthIn(max = (340 * scaleFactor).dp).fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = AppPalette.surfaceRaised),
+                colors = CardDefaults.cardColors(containerColor = IosCardBg.copy(alpha = 1f)),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
             ) {
                 Column(modifier = Modifier.padding((24 * scaleFactor).dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1274,7 +1310,7 @@ private fun SupportDialog(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = IosCardBg),
+                colors = CardDefaults.cardColors(containerColor = IosCardBg.copy(alpha = 1f)),
                 border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
             ) {
                 Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -1306,7 +1342,9 @@ private fun PsiphonOptionsSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = IosCardBg, contentColor = Color.White) {
+    // پس‌زمینه کاملاً مات (alpha = 1f) تا با متن‌های داشبورد زیرش قاطی نشود
+    val solidSheetBg = if (AppPalette.currentTheme == "glass") Color(0xFF151E2E) else IosCardBg.copy(alpha = 1f)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = solidSheetBg, contentColor = Color.White) {
         Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -1367,7 +1405,8 @@ private fun TorOptionsSheet(
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val strings = LocalAppStrings.current
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = IosCardBg, contentColor = Color.White) {
+    val solidSheetBg = if (AppPalette.currentTheme == "glass") Color(0xFF151E2E) else IosCardBg.copy(alpha = 1f)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState, containerColor = solidSheetBg, contentColor = Color.White) {
         Column(
             modifier = Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
