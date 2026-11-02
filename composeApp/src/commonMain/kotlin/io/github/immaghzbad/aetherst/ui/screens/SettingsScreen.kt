@@ -460,7 +460,13 @@ private fun ConnectionPage(
             )
             if (config.connectionMode == ConnectionMode.TUNNEL) {
                 AppDivider()
-                IosPickerRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.accentVariant, title = strings.TUNNEL_ENGINE, value = config.tunnelEngine.displayName, options = TunnelEngine.entries.map { it.displayName }, onOptionSelected = { onUpdateTunnelEngine(TunnelEngine.entries[it]) })
+                if (isDesktop) {
+                    // Desktop wiring always runs the HEV tun2socks helper, so offering the
+                    // Android-only SocksTunBridge engine here would be misleading.
+                    IosPickerRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.accentVariant, title = strings.TUNNEL_ENGINE, value = TunnelEngine.HEV_TUN2SOCKS.displayName, options = emptyList(), onOptionSelected = {}, enabled = false)
+                } else {
+                    IosPickerRow(icon = Icons.Default.VpnLock, iconBg = AppPalette.accentVariant, title = strings.TUNNEL_ENGINE, value = config.tunnelEngine.displayName, options = TunnelEngine.entries.map { it.displayName }, onOptionSelected = { onUpdateTunnelEngine(TunnelEngine.entries[it]) })
+                }
                 AppDivider()
                 IosSwitchRow(
                     icon = Icons.Default.AllInclusive,
