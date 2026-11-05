@@ -33,6 +33,9 @@ object AppPalette {
             "emerald" -> Color(0xFF10B981)
             "amethyst" -> Color(0xFFA855F7)
             "crimson" -> Color(0xFFF43F5E)
+            "ocean" -> Color(0xFFD97706)
+            "midnight" -> Color(0xFFC9C2E3)
+            "cyberpunk" -> Color(0xFFEC4899)
             else -> Color(0xFF007AFF)
         }
 
@@ -42,6 +45,9 @@ object AppPalette {
             "emerald" -> Color(0xFF059669)
             "amethyst" -> Color(0xFF7E22CE)
             "crimson" -> Color(0xFFE11D48)
+            "ocean" -> Color(0xFF5BC0DE)
+            "midnight" -> Color(0xFF8B7CC7)
+            "cyberpunk" -> Color(0xFF64748B)
             else -> Color(0xFF5856D6)
         }
 
@@ -51,6 +57,9 @@ object AppPalette {
             "emerald" -> Color(0xFF34D399)
             "amethyst" -> Color(0xFFC084FC)
             "crimson" -> Color(0xFFFB7185)
+            "ocean" -> Color(0xFFF4D6B0)
+            "midnight" -> Color(0xFF5A3B8C)
+            "cyberpunk" -> Color(0xFFF1F5F9)
             else -> Color(0xFFAF52DE)
         }
 
@@ -67,6 +76,9 @@ object AppPalette {
             "emerald" -> Color(0xFF13221C)
             "amethyst" -> Color(0xFF1C162B)
             "crimson" -> Color(0xFF241418)
+            "ocean" -> Color(0xFF1C2541)
+            "midnight" -> Color(0xFF2A1E4D)
+            "cyberpunk" -> Color(0xFF1F2937)
             else -> Color(0xFF1C1C1E)
         }
 
@@ -76,6 +88,9 @@ object AppPalette {
             "emerald" -> Color(0xFF07110D)
             "amethyst" -> Color(0xFF0D0A14)
             "crimson" -> Color(0xFF11080A)
+            "ocean" -> Color(0xFF0B132B)
+            "midnight" -> Color(0xFF0E0B1D)
+            "cyberpunk" -> Color(0xFF121212)
             else -> Color(0xFF000000)
         }
 
@@ -85,6 +100,9 @@ object AppPalette {
             "emerald" -> Color(0xFF1D332A)
             "amethyst" -> Color(0xFF2A2140)
             "crimson" -> Color(0xFF361E24)
+            "ocean" -> Color(0xFF3A506B)
+            "midnight" -> Color(0xFF3A3A52)
+            "cyberpunk" -> Color(0xFF334155)
             else -> Color(0xFF2C2C2E)
         }
 
@@ -94,6 +112,9 @@ object AppPalette {
             "emerald" -> Color(0xFF1D332A)
             "amethyst" -> Color(0xFF2A2140)
             "crimson" -> Color(0xFF361E24)
+            "ocean" -> Color(0xFF3A506B)
+            "midnight" -> Color(0xFF3A3A52)
+            "cyberpunk" -> Color(0xFF334155)
             else -> Color(0xFF2C2C2E)
         }
 
@@ -116,6 +137,9 @@ object AppPalette {
             "emerald" -> Color(0xFF13221C)
             "amethyst" -> Color(0xFF1C162B)
             "crimson" -> Color(0xFF241418)
+            "ocean" -> Color(0xFF3A506B)
+            "midnight" -> Color(0xFF3A3A52)
+            "cyberpunk" -> Color(0xFF334155)
             else -> Color(0xFF1C1C1E)
         }
 

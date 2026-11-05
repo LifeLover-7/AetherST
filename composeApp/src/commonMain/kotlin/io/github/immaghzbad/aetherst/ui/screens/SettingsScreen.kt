@@ -488,13 +488,16 @@ private fun ConnectionPage(
 private fun InterfacePage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> Unit) {
     val strings = LocalAppStrings.current
     val isSwipeSelected = config.connectButtonStyle == "swipe_manual"
-    val themeCodes = listOf("default", "glass", "emerald", "amethyst", "crimson")
+    val themeCodes = listOf("default", "glass", "emerald", "amethyst", "crimson", "ocean", "midnight", "cyberpunk")
     val themeNames = listOf(
         "تیره کلاسیک (Default Dark)",
         "شیشه‌ای مات (Frosted Glass)",
         "زمردی نئون (Emerald)",
         "بنفش سلطنتی (Amethyst)",
-        "سرخ گیمینگ (Crimson)"
+        "سرخ گیمینگ (Crimson)",
+        "اقیانوسی (Ocean)",
+        "نیمه‌شب (Midnight)",
+        "سایبرپانک (Cyberpunk)"
     )
     val currentThemeIdx = themeCodes.indexOf(AppPalette.currentTheme).coerceAtLeast(0)
 
