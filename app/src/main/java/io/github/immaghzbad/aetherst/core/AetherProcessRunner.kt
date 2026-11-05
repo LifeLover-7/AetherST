@@ -346,6 +346,9 @@ class AetherProcessRunner(private val context: Context) {
                     env["AETHER_MASQUE_H2_FRAGMENT_SIZE"] = config.fragmentSize
                     env["AETHER_MASQUE_H2_FRAGMENT_DELAY"] = config.fragmentDelay
                 }
+                if (config.masqueSni.isNotBlank()) {
+                    env["AETHER_MASQUE_SNI"] = config.masqueSni.trim()
+                }
             }
 
             if (config.httpProxyEnabled) {
