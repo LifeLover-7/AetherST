@@ -180,8 +180,6 @@ class AetherProcessRunner(private val context: Context) {
                 }
             }
 
-            commandList.add("--exit-loc")
-            commandList.add("!IR")
 
             if (config.httpProxyEnabled) {
                 val httpBindHost = bindAddress.substringBefore(':')
@@ -366,7 +364,6 @@ class AetherProcessRunner(private val context: Context) {
 
             env["AETHER_QUICK_RECONNECT"] = if (config.quickReconnect) "1" else "0"
 
-            env["AETHER_EXIT_LOC"] = "!IR"
 
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
@@ -624,9 +621,10 @@ class AetherProcessRunner(private val context: Context) {
                 updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
             }
             lower.contains("socks") && lower.contains("listening") -> {
-                if (dataPlaneOk) {
-                    updateState(ConnectionStatus.SOCKS_READY, attemptId)
-                }
+                quickRetryPending.set(false)
+                dataPlaneOk = true
+                updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
+                updateState(ConnectionStatus.SOCKS_READY, attemptId)
             }
             ((lower.contains("reconnecting") && _connectionStatus.value == ConnectionStatus.RUNNING) || isLost) -> {
                 if (isReconnecting.compareAndSet(false, true)) {

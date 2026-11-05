@@ -58,6 +58,32 @@ object BinaryManager {
         val targetFile = File(binDir, "aether_core")
         val sourceFile = File(binDir, "aether-${archInfo.targetName}")
 
+        // Fallback: extract libaether.so directly from APK if not extracted by package installer
+        if (!bundledBinary.exists() || !bundledBinary.canExecute()) {
+            try {
+                val apkFile = File(context.applicationInfo.sourceDir)
+                if (apkFile.exists() && apkFile.isFile) {
+                    java.util.zip.ZipFile(apkFile).use { zip ->
+                        val entryName = "lib/${archInfo.abi}/libaether.so"
+                        val entry = zip.getEntry(entryName)
+                        if (entry != null) {
+                            val tempFile = File(binDir, "aether_core.tmp")
+                            zip.getInputStream(entry).use { input ->
+                                tempFile.outputStream().use { output -> input.copyTo(output) }
+                            }
+                            makeExecutable(tempFile)
+                            if (tempFile.renameTo(targetFile) || (targetFile.delete() && tempFile.renameTo(targetFile))) {
+                                makeExecutable(targetFile)
+                                if (targetFile.canExecute()) return targetFile
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                LogRepository.w("APK zip extraction fallback failed: ${e.message}")
+            }
+        }
+
         if (sourceFile.exists() && sourceFile.isFile && sourceFile.length() > 0) {
             val tempFile = File(binDir, "aether_core.tmp")
             try {

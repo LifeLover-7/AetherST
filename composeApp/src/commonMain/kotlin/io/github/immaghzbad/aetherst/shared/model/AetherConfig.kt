@@ -160,7 +160,7 @@ data class AetherConfig(
     val h2Fragment: Boolean = true,
     val fragmentSize: String = "30-60",
     val fragmentDelay: String = "5-15",
-    val masqueSni: String = "www.cloudflare.com",
+    val masqueSni: String = "",
     val noDataCheck: Boolean = false,
     val quickReconnect: Boolean = true,
     val socksHost: String = "127.0.0.1",

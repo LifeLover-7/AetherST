@@ -155,8 +155,6 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 }
             }
 
-            command.add("--exit-loc")
-            command.add("!IR")
 
             if (config.mimEnabled) {
                 command.add("--mim")
@@ -263,7 +261,6 @@ class AetherProcessRunner(private val context: PlatformContext) {
             }
             env["AETHER_QUICK_RECONNECT"] = if (config.quickReconnect) "1" else "0"
 
-            env["AETHER_EXIT_LOC"] = "!IR"
 
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
