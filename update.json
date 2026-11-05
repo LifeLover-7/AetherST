@@ -1,7 +1,7 @@
 {
-  "version": "1.7.1",
-  "version_code": 10,
+  "version": "2.0.0",
+  "version_code": 20,
   "is_beta": false,
-  "changelog": "Some bugs fixed and UI improvements.",
-  "release_url": "https://github.com/immaghzbad/AetherST/releases/tag/v1.7.1-android"
+  "changelog": "Aether Core v2.4.0, ultra size reduction, and dedicated MCI (Hamrah-e Aval) profile.",
+  "release_url": "https://github.com/LifeLover-7/AetherST/releases/tag/v2.0.0-android"
 }

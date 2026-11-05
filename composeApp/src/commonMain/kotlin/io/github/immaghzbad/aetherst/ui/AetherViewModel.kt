@@ -470,9 +470,9 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
         viewModelScope.launch {
             try {
                 val updateUrl = if (isDesktop) {
-                    "https://raw.githubusercontent.com/immaghzbad/AetherST/refs/heads/main/updatewin.json"
+                    "https://raw.githubusercontent.com/LifeLover-7/AetherST/refs/heads/main/updatewin.json"
                 } else {
-                    "https://raw.githubusercontent.com/immaghzbad/AetherST/refs/heads/main/update.json"
+                    "https://raw.githubusercontent.com/LifeLover-7/AetherST/refs/heads/main/update.json"
                 }
                 val info = withContext(Dispatchers.Default) {
                     val request = Request.Builder().url(updateUrl).build()

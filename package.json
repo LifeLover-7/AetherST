@@ -1,6 +1,6 @@
 {
   "name": "aetherst-tunnel",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "<p align=\"center\">\r   <img src=\"https://img.shields.io/badge/AetherST-Tunnel-007AFF?style=for-the-badge&logo=shield&logoColor=white\" alt=\"AetherST Logo\" width=\"200\">\r </p>",
   "main": "index.js",
   "scripts": {
@@ -8,13 +8,13 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/immaghzbad/AetherST.git"
+    "url": "git+https://github.com/LifeLover-7/AetherST.git"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/immaghzbad/AetherST/issues"
+    "url": "https://github.com/LifeLover-7/AetherST/issues"
   },
-  "homepage": "https://github.com/immaghzbad/AetherST#readme"
+  "homepage": "https://github.com/LifeLover-7/AetherST#readme"
 }

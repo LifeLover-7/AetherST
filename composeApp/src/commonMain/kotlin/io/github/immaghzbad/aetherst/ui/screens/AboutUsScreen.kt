@@ -30,7 +30,7 @@ private val IosActiveBlue = AppPalette.accent
 private val IosActiveGreen = AppPalette.statusConnected
 private val IosPurple = AppPalette.accentVariant
 
-private const val UserGithubUrl = "https://github.com/immaghzbad"
+private const val UserGithubUrl = "https://github.com/LifeLover-7/AetherST"
 private const val AetherRepositoryUrl = "https://github.com/CluvexStudio/Aether"
 private const val HevRepositoryUrl = "https://github.com/heiher/hev-socks5-tunnel"
 private const val PsiphonRepositoryUrl = "https://github.com/Psiphon-Labs/psiphon-tunnel-core"
@@ -127,7 +127,7 @@ fun AboutUsScreen(
                     IosActionRow(
                         iconBg = IosActiveBlue.copy(alpha = 0.16f),
                         title = strings.ABOUT_LINK_MAINTAINER,
-                        subtitle = "github.com/immaghzbad",
+                        subtitle = "github.com/LifeLover-7/AetherST",
                         onClick = { uriHandler.openUri(UserGithubUrl) }
                     )
                     AppDivider()

@@ -9,14 +9,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/immaghzbad/AetherST/releases">
-    <img src="https://img.shields.io/github/v/release/immaghzbad/AetherST?style=for-the-badge&color=007AFF" alt="Release">
+  <a href="https://github.com/LifeLover-7/AetherST/releases">
+    <img src="https://img.shields.io/github/v/release/LifeLover-7/AetherST?style=for-the-badge&color=007AFF" alt="Release">
   </a>
   <a href="LICENSE">
     <img src="https://img.shields.io/badge/License-Proprietary-orange?style=for-the-badge" alt="License">
   </a>
-  <a href="https://github.com/immaghzbad/AetherST/stargazers">
-    <img src="https://img.shields.io/github/stars/immaghzbad/AetherST?style=for-the-badge&color=FFD700" alt="Stars">
+  <a href="https://github.com/LifeLover-7/AetherST/stargazers">
+    <img src="https://img.shields.io/github/stars/LifeLover-7/AetherST?style=for-the-badge&color=FFD700" alt="Stars">
   </a>
   <img src="https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Platform Android">
   <img src="https://img.shields.io/badge/Platform-Windows-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Platform Windows">

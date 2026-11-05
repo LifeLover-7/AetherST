@@ -100,10 +100,6 @@ fun DashboardScreen(
                     }
                 }
             }
-            if (!settings.getBoolean("support_dialog_dismissed", false)) {
-                supportDialogAuto = true
-                showSupportDialog = true
-            }
         }
     }
 
