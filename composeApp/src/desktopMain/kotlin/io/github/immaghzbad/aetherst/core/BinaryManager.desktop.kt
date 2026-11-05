@@ -43,16 +43,41 @@ class DesktopBinaryManager : BinaryManager {
         val appData = System.getenv("AppData") ?: System.getProperty("user.home")
         val targetDir = File(appData, "AetherST-Tunnel/bin")
         if (!targetDir.exists()) targetDir.mkdirs()
-        val targetFile = File(targetDir, binName)
+
+        val isAether = binName.startsWith("aether", ignoreCase = true)
+        val aetherVersionMarker = File(targetDir, "aether_version.marker")
+        val requiredVersion = "2.4.0"
+
+        val targetFile = if (isAether) {
+            val vFile = File(targetDir, "aether-2.4.0.exe")
+            if (vFile.exists() && vFile.length() > 1_000_000L && aetherVersionMarker.exists() && aetherVersionMarker.readText().trim() == requiredVersion) {
+                return vFile.absolutePath
+            }
+            vFile
+        } else {
+            File(targetDir, binName)
+        }
 
         val needsLibs = binName.contains("hev-socks5-tunnel")
 
-        if (!targetFile.exists()) {
+        val needExtract = !targetFile.exists() || (isAether && (!aetherVersionMarker.exists() || aetherVersionMarker.readText().trim() != requiredVersion))
+
+        if (needExtract) {
             try {
-                val stream = getResourceStream(binName) ?: getResourceStream("bin/$binName")
+                val stream = getResourceStream(binName) ?: getResourceStream("bin/$binName") ?: getResourceStream("bin/aether.exe")
                 stream?.use { input ->
                     targetFile.outputStream().use { output -> input.copyTo(output) }
                     if (!System.getProperty("os.name").lowercase().contains("win")) targetFile.setExecutable(true)
+                }
+                if (isAether) {
+                    runCatching { aetherVersionMarker.writeText(requiredVersion) }
+                    // Also attempt to update default aether.exe if not locked
+                    runCatching {
+                        val defaultAether = File(targetDir, "aether.exe")
+                        if (targetFile.exists() && targetFile.absolutePath != defaultAether.absolutePath) {
+                            targetFile.copyTo(defaultAether, overwrite = true)
+                        }
+                    }
                 }
                 if (needsLibs) {
                     extractResource("wintun.dll", targetDir)
@@ -65,16 +90,14 @@ class DesktopBinaryManager : BinaryManager {
                     extractResource("wintun.dll", targetDir)
                     extractResource("msys-2.0.dll", targetDir)
                 }
-                val expectedSize = getExpectedSize(binName)
-                if (expectedSize > 0 && targetFile.length() < expectedSize * 0.8) {
-                    targetFile.delete()
-                    getResourceStream(binName)?.use { input ->
-                        targetFile.outputStream().use { output -> input.copyTo(output) }
-                    } ?: getResourceStream("bin/$binName")?.use { input ->
-                        targetFile.outputStream().use { output -> input.copyTo(output) }
-                    }
-                }
             } catch (_: Exception) {}
+        }
+
+        if (isAether && (!targetFile.exists() || targetFile.length() < 1_000_000L)) {
+            val fallbackAether = File(targetDir, "aether.exe")
+            if (fallbackAether.exists() && fallbackAether.length() > 1_000_000L) {
+                return fallbackAether.absolutePath
+            }
         }
 
         return if (targetFile.exists()) targetFile.absolutePath else binName

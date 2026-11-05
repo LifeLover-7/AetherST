@@ -143,14 +143,17 @@ class ConnectionController private constructor(context: Context) : ConnectionCon
             val config = AetherConfigRepository.getInstance(getSettings(PlatformContext(appContext))).config.value.effectiveZeroTrustConfig()
             var effectiveConfig = config
 
-            // تنظیمات بهینه GOOL برای پینگ پایین و جلوگیری از تکهتکه شدن پکت‌های UDP
+            // تنظیم بهینه GOOL مطابق معماری مدرن Aether v2.4.0 (تونل WireGuard داخل MASQUE)
             if (effectiveConfig.protocol == AetherProtocol.GOOL) {
                 effectiveConfig = effectiveConfig.copy(
-                    wiwScan = true,
                     ipMode = if (effectiveConfig.ipMode == AetherIpMode.AUTO) AetherIpMode.IPV4 else effectiveConfig.ipMode,
-                    scanMode = if (effectiveConfig.scanMode == AetherScanMode.TURBO) AetherScanMode.BALANCED else effectiveConfig.scanMode,
                     noise = if (effectiveConfig.noise == AetherNoise.OFF) AetherNoise.BALANCED else effectiveConfig.noise,
-                    mtu = effectiveConfig.mtu.coerceIn(1120, 1240),
+                    h2Mode = true,
+                    h2Fragment = true,
+                    fragmentSize = effectiveConfig.fragmentSize.ifBlank { "30-60" },
+                    fragmentDelay = effectiveConfig.fragmentDelay.ifBlank { "5-15" },
+                    masqueSni = effectiveConfig.masqueSni.ifBlank { "www.cloudflare.com" },
+                    mtu = effectiveConfig.mtu.coerceIn(1120, 1280),
                     validateSecs = effectiveConfig.validateSecs.coerceAtLeast(15)
                 )
             }

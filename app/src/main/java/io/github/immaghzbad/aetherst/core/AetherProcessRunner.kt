@@ -198,11 +198,11 @@ class AetherProcessRunner(private val context: Context) {
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
                     if (wiwOuter.isNotEmpty()) {
-                        commandList.add("--wg-peer")
+                        commandList.add("--peer")
                         commandList.add(wiwOuter)
                     }
                     if (wiwInner.isNotEmpty()) {
-                        commandList.add("--peer")
+                        commandList.add("--gool-peer")
                         commandList.add(wiwInner)
                     }
                 }
@@ -370,8 +370,8 @@ class AetherProcessRunner(private val context: Context) {
 
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
-                    if (wiwOuter.isNotEmpty()) env["AETHER_WIW_OUTER_PEER"] = wiwOuter
-                    if (wiwInner.isNotEmpty()) env["AETHER_WIW_INNER_PEER"] = wiwInner
+                    if (wiwOuter.isNotEmpty()) env["AETHER_PEER"] = wiwOuter
+                    if (wiwInner.isNotEmpty()) env["AETHER_GOOL_PEER"] = wiwInner
                 }
                 AetherProtocol.WG -> {
                     val wgPeer = config.wgPeer.trim().ifEmpty { config.peer.trim() }
@@ -577,15 +577,15 @@ class AetherProcessRunner(private val context: Context) {
                 !lower.contains("socksbridge") &&
                 !lower.contains("connection failed")
 
-        val isLost = lower.contains("tunnel lost") ||
-                     lower.contains("handshake timeout") ||
-                     lower.contains("handshake failed") ||
-                     lower.contains("connection refused") ||
-                     lower.contains("all gateways failed") ||
-                     lower.contains("broken pipe") ||
-                     lower.contains("stream closed") ||
-                     lower.contains("tunnel ended") ||
-                     lower.contains("tunnel exited")
+        val isLost = (_connectionStatus.value == ConnectionStatus.RUNNING && (
+            lower.contains("tunnel lost") ||
+            lower.contains("broken pipe") ||
+            lower.contains("stream closed") ||
+            lower.contains("tunnel ended") ||
+            lower.contains("tunnel exited") ||
+            lower.contains("wireguard tunnel exited") ||
+            lower.contains("masque tunnel ended")
+        )) || lower.contains("all gateways failed")
 
         when {
             lower.contains("scanning") -> {
@@ -616,7 +616,9 @@ class AetherProcessRunner(private val context: Context) {
                 lower.contains("data plane verification passed") ||
                 lower.contains("warp-in-warp ready") ||
                 lower.contains("wiw ready") ||
-                lower.contains("gool ready") -> {
+                lower.contains("gool ready") ||
+                lower.contains("gool exit:") ||
+                (lower.contains("exit location") && lower.contains("accepted")) -> {
                 quickRetryPending.set(false)
                 dataPlaneOk = true
                 updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
@@ -626,7 +628,7 @@ class AetherProcessRunner(private val context: Context) {
                     updateState(ConnectionStatus.SOCKS_READY, attemptId)
                 }
             }
-            lower.contains("reconnecting") || isLost -> {
+            ((lower.contains("reconnecting") && _connectionStatus.value == ConnectionStatus.RUNNING) || isLost) -> {
                 if (isReconnecting.compareAndSet(false, true)) {
                     goolOuterValidated = false
                     dataPlaneOk = false

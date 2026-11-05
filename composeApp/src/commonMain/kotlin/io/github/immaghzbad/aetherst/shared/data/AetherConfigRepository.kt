@@ -110,10 +110,10 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             httpProxyEnabled = settings.getBoolean("${prefix}http_proxy_enabled", false),
             perfProfile = runCatching { AetherPerfProfile.valueOf(perfProfileStr) }.getOrDefault(AetherPerfProfile.AUTO),
             h2Mode = settings.getBoolean("${prefix}h2_mode", true),
-            h2Fragment = settings.getBoolean("${prefix}h2_fragment", false),
-            fragmentSize = settings.getString("${prefix}fragment_size", "16-32"),
-            fragmentDelay = settings.getString("${prefix}fragment_delay", "2-10"),
-            masqueSni = settings.getString("${prefix}masque_sni", ""),
+            h2Fragment = settings.getBoolean("${prefix}h2_fragment", true),
+            fragmentSize = settings.getString("${prefix}fragment_size", "30-60"),
+            fragmentDelay = settings.getString("${prefix}fragment_delay", "5-15"),
+            masqueSni = settings.getString("${prefix}masque_sni", "www.cloudflare.com"),
             noDataCheck = settings.getBoolean("${prefix}no_data_check", false),
             quickReconnect = settings.getBoolean("${prefix}quick_reconnect", true),
             socksHost = cleanHost,
@@ -494,7 +494,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         }
         val targetProtocol = when (presetId) {
             "turbo", "thorough", "mci" -> AetherProtocol.MASQUE
-            "stealth" -> AetherProtocol.GOOL
+            "stealth", "gaming" -> AetherProtocol.GOOL
             "ironclad" -> AetherProtocol.WG
             else -> return
         }
@@ -520,19 +520,42 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 mtu = 1280,
                 connectionMode = ConnectionMode.TUNNEL
             )
-            "turbo" -> base.copy(
-                presetId = "turbo",
-                protocol = AetherProtocol.MASQUE,
-                noise = AetherNoise.GFW,
+            "gaming" -> base.copy(
+                presetId = "gaming",
+                protocol = AetherProtocol.GOOL,
+                noise = AetherNoise.BALANCED,
                 scanMode = AetherScanMode.TURBO,
                 echEnabled = false,
                 httpProxyEnabled = false,
                 h2Mode = true,
-                h2Fragment = false,
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "www.cloudflare.com",
                 noDataCheck = false,
                 tlsGroups = "",
-                fragmentSize = "16-32",
-                fragmentDelay = "2-10",
+                mtu = 1240,
+                keepaliveEnabled = true,
+                keepalive = 5,
+                hevUdpMode = "udp",
+                dnsEnabled = true,
+                dnsList = "1.1.1.1,1.0.0.1",
+                connectionMode = ConnectionMode.TUNNEL
+            )
+            "turbo" -> base.copy(
+                presetId = "turbo",
+                protocol = AetherProtocol.MASQUE,
+                noise = AetherNoise.FIREWALL,
+                scanMode = AetherScanMode.TURBO,
+                echEnabled = false,
+                httpProxyEnabled = false,
+                h2Mode = true,
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "www.cloudflare.com",
+                noDataCheck = false,
+                tlsGroups = "",
                 mtu = 1320,
                 connectionMode = ConnectionMode.TUNNEL
             )
@@ -540,48 +563,51 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 presetId = "thorough",
                 protocol = AetherProtocol.MASQUE,
                 noise = AetherNoise.GFW,
-                scanMode = AetherScanMode.TURBO,
+                scanMode = AetherScanMode.THOROUGH,
                 echEnabled = false,
                 httpProxyEnabled = false,
                 h2Mode = true,
-                h2Fragment = false,
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "www.cloudflare.com",
                 noDataCheck = false,
                 tlsGroups = "",
-                fragmentSize = "16-32",
-                fragmentDelay = "2-10",
                 mtu = 1320,
                 connectionMode = ConnectionMode.TUNNEL
             )
             "stealth" -> base.copy(
                 presetId = "stealth",
                 protocol = AetherProtocol.GOOL,
-                noise = AetherNoise.AGGRESSIVE,
+                noise = AetherNoise.BALANCED,
                 scanMode = AetherScanMode.STEALTH,
                 echEnabled = false,
-                httpProxyEnabled = true,
+                httpProxyEnabled = false,
                 h2Mode = true,
-                h2Fragment = false,
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "www.cloudflare.com",
                 noDataCheck = false,
                 tlsGroups = "",
-                fragmentSize = "16-32",
-                fragmentDelay = "2-10",
-                mtu = 1330,
+                mtu = 1240,
                 connectionMode = ConnectionMode.TUNNEL
             )
             "ironclad" -> base.copy(
                 presetId = "ironclad",
                 protocol = AetherProtocol.WG,
-                noise = AetherNoise.AGGRESSIVE,
-                scanMode = AetherScanMode.STEALTH,
+                noise = AetherNoise.GFW,
+                scanMode = AetherScanMode.IRONCLAD,
                 echEnabled = false,
-                httpProxyEnabled = true,
+                httpProxyEnabled = false,
                 h2Mode = true,
-                h2Fragment = false,
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "www.cloudflare.com",
                 noDataCheck = false,
                 tlsGroups = "",
-                fragmentSize = "16-32",
-                fragmentDelay = "2-10",
-                mtu = 1330,
+                mtu = 1280,
                 connectionMode = ConnectionMode.TUNNEL
             )
             else -> current
@@ -645,15 +671,16 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         return when (protocol) {
             AetherProtocol.MASQUE -> base.copy(
                 protocol = protocol,
-                noise = AetherNoise.GFW,
+                noise = AetherNoise.FIREWALL,
                 scanMode = AetherScanMode.TURBO,
                 ipMode = AetherIpMode.AUTO,
                 echEnabled = false,
                 httpProxyEnabled = false,
                 h2Mode = true,
-                h2Fragment = false,
-                fragmentSize = "16-32",
-                fragmentDelay = "2-10",
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "www.cloudflare.com",
                 noDataCheck = false,
                 quickReconnect = true,
                 peer = "",
@@ -671,19 +698,20 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 wgEndpointCooldownSecs = 300,
                 noProfileRetry = false,
                 tlsGroups = "",
-                mtu = 1320
+                mtu = 1280
             )
             AetherProtocol.WG -> base.copy(
                 protocol = protocol,
-                noise = AetherNoise.AGGRESSIVE,
-                scanMode = AetherScanMode.STEALTH,
+                noise = AetherNoise.BALANCED,
+                scanMode = AetherScanMode.BALANCED,
                 ipMode = AetherIpMode.AUTO,
                 echEnabled = false,
                 httpProxyEnabled = true,
                 h2Mode = true,
-                h2Fragment = false,
-                fragmentSize = "16-32",
-                fragmentDelay = "2-10",
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "www.cloudflare.com",
                 noDataCheck = false,
                 quickReconnect = true,
                 peer = "",
@@ -701,19 +729,20 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 wgEndpointCooldownSecs = 300,
                 noProfileRetry = false,
                 tlsGroups = "",
-                mtu = 1330
+                mtu = 1280
             )
             AetherProtocol.GOOL -> base.copy(
                 protocol = protocol,
-                noise = AetherNoise.AGGRESSIVE,
-                scanMode = AetherScanMode.STEALTH,
+                noise = AetherNoise.BALANCED,
+                scanMode = AetherScanMode.TURBO,
                 ipMode = AetherIpMode.AUTO,
                 echEnabled = false,
-                httpProxyEnabled = true,
+                httpProxyEnabled = false,
                 h2Mode = true,
-                h2Fragment = false,
-                fragmentSize = "16-32",
-                fragmentDelay = "2-10",
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "www.cloudflare.com",
                 noDataCheck = false,
                 quickReconnect = true,
                 peer = "",

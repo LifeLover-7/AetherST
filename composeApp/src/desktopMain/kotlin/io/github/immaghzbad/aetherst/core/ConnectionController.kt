@@ -130,14 +130,17 @@ actual object ConnectionController {
             val config = AetherConfigRepository.getInstance(getSettings(context)).config.value.effectiveZeroTrustConfig()
             var effectiveConfig = config
 
-            // تنظیم بهینه GOOL بدون قفل کردن پورت مسدود 2408 و با اسکن خودکار دو لایه
+            // تنظیم بهینه GOOL مطابق معماری مدرن Aether v2.4.0 (تونل WireGuard داخل MASQUE)
             if (effectiveConfig.protocol == AetherProtocol.GOOL) {
                 effectiveConfig = effectiveConfig.copy(
-                    wiwScan = true,
                     ipMode = if (effectiveConfig.ipMode == AetherIpMode.AUTO) AetherIpMode.IPV4 else effectiveConfig.ipMode,
-                    scanMode = if (effectiveConfig.scanMode == AetherScanMode.TURBO) AetherScanMode.BALANCED else effectiveConfig.scanMode,
-                    noise = if (effectiveConfig.noise == AetherNoise.OFF) AetherNoise.GFW else effectiveConfig.noise,
-                    mtu = effectiveConfig.mtu.coerceIn(1120, 1240),
+                    noise = if (effectiveConfig.noise == AetherNoise.OFF) AetherNoise.BALANCED else effectiveConfig.noise,
+                    h2Mode = true,
+                    h2Fragment = true,
+                    fragmentSize = effectiveConfig.fragmentSize.ifBlank { "30-60" },
+                    fragmentDelay = effectiveConfig.fragmentDelay.ifBlank { "5-15" },
+                    masqueSni = effectiveConfig.masqueSni.ifBlank { "www.cloudflare.com" },
+                    mtu = effectiveConfig.mtu.coerceIn(1120, 1280),
                     validateSecs = effectiveConfig.validateSecs.coerceAtLeast(15)
                 )
             } else if (CloakController.isSupported(effectiveConfig)) {
@@ -171,9 +174,9 @@ actual object ConnectionController {
                 inputProvider = { loginCodeChannel.receive() }
             )
 
-            // انتظار واقعی برای متصل شدن هسته
+            // انتظار واقعی برای متصل شدن هسته با مهلت کافی برای اسکن در شبکه ایران
             var coreReady = false
-            val maxWaitLoops = if (effectiveConfig.protocol == AetherProtocol.GOOL) 120 else 60
+            val maxWaitLoops = if (effectiveConfig.protocol == AetherProtocol.GOOL) 150 else 120
             for (i in 0..maxWaitLoops) {
                 currentCoroutineContext().ensureActive()
                 val currentRunnerStatus = runner.connectionStatus.value
@@ -181,7 +184,7 @@ actual object ConnectionController {
                     coreReady = true
                     break
                 }
-                if (i > 3 && currentRunnerStatus == ConnectionStatus.ERROR) {
+                if (i > 10 && currentRunnerStatus == ConnectionStatus.ERROR) {
                     break
                 }
                 delay(300.milliseconds)

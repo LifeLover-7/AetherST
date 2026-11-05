@@ -176,16 +176,15 @@ class AetherProcessRunner(private val context: PlatformContext) {
             val wiwOuter = if (config.protocol == AetherProtocol.GOOL) config.wiwOuter.trim() else ""
             val wiwInner = if (config.protocol == AetherProtocol.GOOL) config.wiwInner.trim() else ""
 
-            // مطابق راهنمای باینری: در حالت GOOL اگر آدرس دستی داده نشود، خود --gool اتوماتیک اسکن می‌کند.
-            // اگر آدرس دستی داده شود، Outer با --wg-peer و Inner با --peer ارسال می‌شود (فلگ --wiw-scan وجود ندارد).
+            // مطابق راهنمای باینری aether v2.4.0: در حالت GOOL، هاپ بیرونی MASQUE است و هاپ درونی WireGuard
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
                     if (wiwOuter.isNotEmpty()) {
-                        command.add("--wg-peer")
+                        command.add("--peer")
                         command.add(wiwOuter)
                     }
                     if (wiwInner.isNotEmpty()) {
-                        command.add("--peer")
+                        command.add("--gool-peer")
                         command.add(wiwInner)
                     }
                 }
@@ -268,8 +267,8 @@ class AetherProcessRunner(private val context: PlatformContext) {
 
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
-                    if (wiwOuter.isNotEmpty()) env["AETHER_WIW_OUTER_PEER"] = wiwOuter
-                    if (wiwInner.isNotEmpty()) env["AETHER_WIW_INNER_PEER"] = wiwInner
+                    if (wiwOuter.isNotEmpty()) env["AETHER_PEER"] = wiwOuter
+                    if (wiwInner.isNotEmpty()) env["AETHER_GOOL_PEER"] = wiwInner
                 }
                 AetherProtocol.WG -> {
                     val wgPeer = config.wgPeer.trim().ifEmpty { config.peer.trim() }
@@ -369,7 +368,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 updateState(ConnectionStatus.STARTING, attemptId)
             }
             lower.contains("validating") -> updateState(ConnectionStatus.VALIDATING, attemptId)
-            (protocol == AetherProtocol.MASQUE && (lower.contains("tunnel validated") || lower.contains("connect-ip status: 200"))) ||
+            (protocol == AetherProtocol.MASQUE && (lower.contains("tunnel validated") || lower.contains("connect-ip status: 200") || (lower.contains("exit location") && lower.contains("accepted")))) ||
             (protocol == AetherProtocol.ZERO_TRUST && (lower.contains("tunnel validated") || lower.contains("connect-ip status: 200") || lower.contains("handshake complete"))) ||
             (protocol == AetherProtocol.WG && (lower.contains("wireguard tunnel validated") || lower.contains("handshake complete") || lower.contains("tunnel validated"))) -> {
                 updateState(ConnectionStatus.RUNNING, attemptId)
@@ -377,18 +376,23 @@ class AetherProcessRunner(private val context: PlatformContext) {
             protocol == AetherProtocol.GOOL -> {
                 if (lower.contains("outer") && (lower.contains("tunnel validated") || lower.contains("handshake complete") || lower.contains("connected"))) {
                     goolOuterValidated = true
+                    updateState(ConnectionStatus.VALIDATING, attemptId)
                 }
                 if ((lower.contains("inner") && (lower.contains("tunnel validated") || lower.contains("handshake complete"))) ||
                     lower.contains("gool tunnel validated") ||
                     lower.contains("wiw tunnel validated") ||
                     lower.contains("warp-in-warp tunnel validated") ||
+                    lower.contains("gool exit:") ||
+                    (lower.contains("exit location") && lower.contains("accepted")) ||
                     (goolOuterValidated && lower.contains("tunnel validated") && !lower.contains("outer"))
                 ) {
                     updateState(ConnectionStatus.RUNNING, attemptId)
                 }
             }
-            lower.contains("reconnecting") || lower.contains("tunnel lost") || lower.contains("handshake timeout") ||
-                lower.contains("handshake failed") || lower.contains("connection refused") || lower.contains("all gateways failed") -> {
+            (_connectionStatus.value == ConnectionStatus.RUNNING && (
+                lower.contains("reconnecting") || lower.contains("tunnel lost") || lower.contains("tunnel ended") ||
+                lower.contains("wireguard tunnel exited") || lower.contains("masque tunnel ended") || lower.contains("tunnel exited")
+            )) || lower.contains("all gateways failed") -> {
                 goolOuterValidated = false
                 updateState(ConnectionStatus.RECONNECTING, attemptId)
             }

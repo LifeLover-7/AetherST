@@ -9,6 +9,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Request
@@ -97,24 +99,26 @@ object IpInfoRepository {
             withContext(Dispatchers.Default) {
                 if (!useProxy) {
                     LogRepository.i("Querying public IP (direct)...", "IpWhois")
-                    val result = fetchParallelDirect(provider)
+                    val rawResult = fetchParallelDirect(provider)
+                    val result = enrichCountryIfMissing(rawResult)
                     if (result != null) {
                         _ipInfo.value = result
                         LogRepository.i("Direct IP: ${result.ip} (${result.country})", "IpWhois")
                         return@withContext
                     }
                 } else {
-                    delay(800.milliseconds)
+                    delay(500.milliseconds)
                     for (attempt in 1..4) {
                         LogRepository.i("Querying public IP via tunnel ($socksHost:$socksPort) attempt $attempt...", "IpWhois")
-                        val result = fetchParallelViaProxy(socksHost, socksPort, provider)
+                        val rawResult = fetchParallelViaProxy(socksHost, socksPort, provider)
+                        val result = enrichCountryIfMissing(rawResult, socksHost, socksPort)
                         if (result != null) {
                             _ipInfo.value = result
-                            LogRepository.i("Tunnel IP: ${result.ip} (${result.country})", "IpWhois")
+                            LogRepository.i("Tunnel IP: ${result.ip} (${result.country}) [${result.countryCode}]", "IpWhois")
                             return@withContext
                         }
                         if (attempt < 4) {
-                            delay((1200L * attempt).milliseconds)
+                            delay((1000L * attempt).milliseconds)
                         }
                     }
                     LogRepository.w("SOCKS proxy lookup failed after all attempts.", "IpWhois")
@@ -138,18 +142,30 @@ object IpInfoRepository {
         val all = directSources()
         val ordered = if (provider == IpInfoProvider.AUTO) all.filter { geoProviders.contains(it.first) }.shuffled() else all.filter { it.first == provider }
         if (ordered.isEmpty()) return@coroutineScope null
-        val sources = ordered.map { async { it.second() } }
-        var fallbackResult: IpInfo? = null
-        for (future in sources) {
-            val result = future.await()
-            if (result != null) {
-                if (result.countryCode.isNotEmpty() || provider != IpInfoProvider.AUTO) {
-                    sources.forEach { it.cancel() }
-                    return@coroutineScope result
-                } else if (fallbackResult == null) {
-                    fallbackResult = result
-                }
+        val channel = Channel<IpInfo>(Channel.UNLIMITED)
+        val jobs = ordered.map { pair ->
+            launch {
+                try {
+                    val res = pair.second()
+                    if (res != null && res.ip.isNotEmpty()) {
+                        channel.send(res)
+                    }
+                } catch (_: Throwable) {}
             }
+        }
+        var fallbackResult: IpInfo? = null
+        val deadline = System.currentTimeMillis() + 8000L
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                val candidate = withTimeoutOrNull(2000L) { channel.receiveCatching().getOrNull() } ?: continue
+                if (candidate.countryCode.isNotEmpty() || provider != IpInfoProvider.AUTO) {
+                    jobs.forEach { it.cancel() }
+                    return@coroutineScope candidate
+                }
+                if (fallbackResult == null) fallbackResult = candidate
+            }
+        } finally {
+            jobs.forEach { it.cancel() }
         }
         fallbackResult
     }
@@ -158,20 +174,63 @@ object IpInfoRepository {
         val all = proxySources(socksHost, socksPort)
         val ordered = if (provider == IpInfoProvider.AUTO) all.filter { geoProviders.contains(it.first) }.shuffled() else all.filter { it.first == provider }
         if (ordered.isEmpty()) return@coroutineScope null
-        val sources = ordered.map { async { it.second() } }
-        var fallbackResult: IpInfo? = null
-        for (future in sources) {
-            val result = future.await()
-            if (result != null) {
-                if (result.countryCode.isNotEmpty() || provider != IpInfoProvider.AUTO) {
-                    sources.forEach { it.cancel() }
-                    return@coroutineScope result
-                } else if (fallbackResult == null) {
-                    fallbackResult = result
-                }
+        val channel = Channel<IpInfo>(Channel.UNLIMITED)
+        val jobs = ordered.map { pair ->
+            launch {
+                try {
+                    val res = pair.second()
+                    if (res != null && res.ip.isNotEmpty()) {
+                        channel.send(res)
+                    }
+                } catch (_: Throwable) {}
             }
         }
+        var fallbackResult: IpInfo? = null
+        val deadline = System.currentTimeMillis() + 8000L
+        try {
+            while (System.currentTimeMillis() < deadline) {
+                val candidate = withTimeoutOrNull(2000L) { channel.receiveCatching().getOrNull() } ?: continue
+                if (candidate.countryCode.isNotEmpty() || provider != IpInfoProvider.AUTO) {
+                    jobs.forEach { it.cancel() }
+                    return@coroutineScope candidate
+                }
+                if (fallbackResult == null) fallbackResult = candidate
+            }
+        } finally {
+            jobs.forEach { it.cancel() }
+        }
         fallbackResult
+    }
+
+    private fun enrichCountryIfMissing(info: IpInfo?, socksHost: String? = null, socksPort: Int? = null): IpInfo? {
+        if (info == null || info.ip.isEmpty()) return info
+        if (info.countryCode.length == 2 && info.country != "Unknown" && info.country.isNotEmpty()) return info
+        return try {
+            val builder = NetworkClient.instance.newBuilder()
+                .connectTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+                .readTimeout(3000, java.util.concurrent.TimeUnit.MILLISECONDS)
+            if (socksHost != null && socksPort != null) {
+                builder.proxy(Proxy(Proxy.Type.SOCKS, InetSocketAddress(socksHost, socksPort)))
+            }
+            val client = builder.build()
+            val request = Request.Builder()
+                .url("https://freeipapi.com/api/json/${info.ip}")
+                .header("User-Agent", "Mozilla/5.0")
+                .build()
+            client.newCall(request).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string() ?: return info
+                    val root = json.parseToJsonElement(body).jsonObject
+                    val code = root["countryCode"]?.jsonPrimitive?.content ?: ""
+                    val name = root["countryName"]?.jsonPrimitive?.content ?: info.country
+                    if (code.length == 2) {
+                        info.copy(country = name, countryCode = code, flag = getFlagEmoji(code))
+                    } else info
+                } else info
+            }
+        } catch (_: Throwable) {
+            info
+        }
     }
 
     private fun tryViaProxyIpSb(socksHost: String, socksPort: Int): IpInfo? {

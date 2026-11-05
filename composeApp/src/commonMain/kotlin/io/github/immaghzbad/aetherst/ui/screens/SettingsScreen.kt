@@ -360,30 +360,7 @@ private fun PresetPage(
                 subtitle = "WARP-in-WARP (Gool) • Non-Iran IP • Native UDP for Online Games",
                 isActive = config.presetId == "gaming",
                 onClick = {
-                    onUpdateConfig(
-                        config.copy(
-                            presetId = "gaming",
-                            protocol = AetherProtocol.GOOL,
-                            wiwScan = false,
-                            psiphonEnabled = false,
-                            psiphonOnly = false,
-                            torEnabled = false,
-                            ipMode = AetherIpMode.IPV4,
-                            scanMode = AetherScanMode.BALANCED,
-                            noise = AetherNoise.BALANCED,
-                            h2Mode = true,
-                            h2Fragment = true,
-                            fragmentSize = "30-60",
-                            fragmentDelay = "5-15",
-                            masqueSni = "www.cloudflare.com",
-                            mtu = 1240,
-                            keepaliveEnabled = true,
-                            keepalive = 5,
-                            hevUdpMode = "udp",
-                            dnsEnabled = true,
-                            dnsList = "1.1.1.1,1.0.0.1"
-                        )
-                    )
+                    onApplyPreset("gaming")
                     onShowToast("پروفایل گیمینگ (GOOL + UDP) فعال شد", false)
                 }
             )
