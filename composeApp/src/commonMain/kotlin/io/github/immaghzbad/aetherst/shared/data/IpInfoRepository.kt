@@ -136,32 +136,42 @@ object IpInfoRepository {
 
     private suspend fun fetchParallelDirect(provider: IpInfoProvider = IpInfoProvider.AUTO): IpInfo? = coroutineScope {
         val all = directSources()
-        val ordered = if (provider == IpInfoProvider.AUTO) all.shuffled() else all.filter { it.first == provider }
+        val ordered = if (provider == IpInfoProvider.AUTO) all.filter { geoProviders.contains(it.first) }.shuffled() else all.filter { it.first == provider }
         if (ordered.isEmpty()) return@coroutineScope null
         val sources = ordered.map { async { it.second() } }
+        var fallbackResult: IpInfo? = null
         for (future in sources) {
             val result = future.await()
             if (result != null) {
-                sources.forEach { it.cancel() }
-                return@coroutineScope result
+                if (result.countryCode.isNotEmpty() || provider != IpInfoProvider.AUTO) {
+                    sources.forEach { it.cancel() }
+                    return@coroutineScope result
+                } else if (fallbackResult == null) {
+                    fallbackResult = result
+                }
             }
         }
-        null
+        fallbackResult
     }
 
     private suspend fun fetchParallelViaProxy(socksHost: String, socksPort: Int, provider: IpInfoProvider = IpInfoProvider.AUTO): IpInfo? = coroutineScope {
         val all = proxySources(socksHost, socksPort)
-        val ordered = if (provider == IpInfoProvider.AUTO) all.shuffled() else all.filter { it.first == provider }
+        val ordered = if (provider == IpInfoProvider.AUTO) all.filter { geoProviders.contains(it.first) }.shuffled() else all.filter { it.first == provider }
         if (ordered.isEmpty()) return@coroutineScope null
         val sources = ordered.map { async { it.second() } }
+        var fallbackResult: IpInfo? = null
         for (future in sources) {
             val result = future.await()
             if (result != null) {
-                sources.forEach { it.cancel() }
-                return@coroutineScope result
+                if (result.countryCode.isNotEmpty() || provider != IpInfoProvider.AUTO) {
+                    sources.forEach { it.cancel() }
+                    return@coroutineScope result
+                } else if (fallbackResult == null) {
+                    fallbackResult = result
+                }
             }
         }
-        null
+        fallbackResult
     }
 
     private fun tryViaProxyIpSb(socksHost: String, socksPort: Int): IpInfo? {

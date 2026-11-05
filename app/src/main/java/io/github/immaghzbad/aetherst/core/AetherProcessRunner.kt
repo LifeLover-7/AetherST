@@ -160,7 +160,7 @@ class AetherProcessRunner(private val context: Context) {
                 }
             )
 
-            val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.ZERO_TRUST
+            val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.ZERO_TRUST || config.protocol == AetherProtocol.GOOL || config.mimEnabled
             if (isMasqueBased) {
                 if (config.h2Mode) commandList.add("--h2")
                 if (config.echEnabled) {
@@ -179,6 +179,9 @@ class AetherProcessRunner(private val context: Context) {
                     commandList.add(config.masqueSni.trim())
                 }
             }
+
+            commandList.add("--exit-loc")
+            commandList.add("!IR")
 
             if (config.httpProxyEnabled) {
                 val httpBindHost = bindAddress.substringBefore(':')
@@ -363,11 +366,12 @@ class AetherProcessRunner(private val context: Context) {
 
             env["AETHER_QUICK_RECONNECT"] = if (config.quickReconnect) "1" else "0"
 
+            env["AETHER_EXIT_LOC"] = "!IR"
+
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
                     if (wiwOuter.isNotEmpty()) env["AETHER_WIW_OUTER_PEER"] = wiwOuter
                     if (wiwInner.isNotEmpty()) env["AETHER_WIW_INNER_PEER"] = wiwInner
-                    if (wiwOuter.isEmpty() && wiwInner.isEmpty()) env["AETHER_WIW_PEERS"] = "auto"
                 }
                 AetherProtocol.WG -> {
                     val wgPeer = config.wgPeer.trim().ifEmpty { config.peer.trim() }

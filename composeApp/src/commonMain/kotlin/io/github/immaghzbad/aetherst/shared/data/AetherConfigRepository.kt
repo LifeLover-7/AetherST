@@ -506,9 +506,9 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             "mci" -> base.copy(
                 presetId = "mci",
                 protocol = AetherProtocol.MASQUE,
-                noise = AetherNoise.GFW,
-                scanMode = AetherScanMode.BALANCED,
-                echEnabled = true,
+                noise = AetherNoise.FIREWALL,
+                scanMode = AetherScanMode.TURBO,
+                echEnabled = false,
                 httpProxyEnabled = false,
                 h2Mode = true,
                 h2Fragment = true,
