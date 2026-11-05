@@ -171,8 +171,8 @@ class AetherProcessRunner(private val context: PlatformContext) {
             if (config.noDataCheck) command.add("--no-data-check")
             if (config.quickReconnect) command.add("--quick-reconnect") else command.add("--no-quick-reconnect")
 
-            val wiwOuter = if (config.protocol == AetherProtocol.GOOL) config.wiwOuter.trim() else ""
-            val wiwInner = if (config.protocol == AetherProtocol.GOOL) config.wiwInner.trim() else ""
+            val wiwOuter = if (config.protocol == AetherProtocol.GOOL) config.wiwOuter.trim().ifEmpty { config.peer.trim() } else ""
+            val wiwInner = if (config.protocol == AetherProtocol.GOOL) config.wiwInner.trim().ifEmpty { config.wgPeer.trim() } else ""
 
             // مطابق راهنمای باینری aether v2.4.0: در حالت GOOL، هاپ بیرونی MASQUE است و هاپ درونی WireGuard
             when (config.protocol) {
@@ -371,17 +371,18 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 updateState(ConnectionStatus.RUNNING, attemptId)
             }
             protocol == AetherProtocol.GOOL -> {
-                if (lower.contains("outer") && (lower.contains("tunnel validated") || lower.contains("handshake complete") || lower.contains("connected"))) {
+                if (lower.contains("registering the gool") || lower.contains("validating wireguard") || (lower.contains("tunnel validated") && !lower.contains("inner"))) {
                     goolOuterValidated = true
                     updateState(ConnectionStatus.VALIDATING, attemptId)
                 }
                 if ((lower.contains("inner") && (lower.contains("tunnel validated") || lower.contains("handshake complete"))) ||
+                    lower.contains("gool ready") ||
                     lower.contains("gool tunnel validated") ||
                     lower.contains("wiw tunnel validated") ||
                     lower.contains("warp-in-warp tunnel validated") ||
                     lower.contains("gool exit:") ||
-                    (lower.contains("exit location") && lower.contains("accepted")) ||
-                    (goolOuterValidated && lower.contains("tunnel validated") && !lower.contains("outer"))
+                    (lower.contains("socks") && lower.contains("listening") && lower.contains(lastBindAddress)) ||
+                    (lower.contains("exit location") && lower.contains("accepted"))
                 ) {
                     updateState(ConnectionStatus.RUNNING, attemptId)
                 }

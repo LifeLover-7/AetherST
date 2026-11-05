@@ -152,7 +152,7 @@ class ConnectionController private constructor(context: Context) : ConnectionCon
                     h2Fragment = true,
                     fragmentSize = effectiveConfig.fragmentSize.ifBlank { "30-60" },
                     fragmentDelay = effectiveConfig.fragmentDelay.ifBlank { "5-15" },
-                    masqueSni = effectiveConfig.masqueSni.ifBlank { "www.cloudflare.com" },
+                    masqueSni = effectiveConfig.masqueSni,
                     mtu = effectiveConfig.mtu.coerceIn(1120, 1280),
                     validateSecs = effectiveConfig.validateSecs.coerceAtLeast(15)
                 )
@@ -1005,72 +1005,20 @@ class ConnectionController private constructor(context: Context) : ConnectionCon
     }
 
     private suspend fun startAetherInternal(config: AetherConfig, bindAddress: String, attemptId: Long): Boolean {
-        var effective = config
-        var round = 0
-        var originalLastconn: Map<String, ByteArray>? = null
-        var backupTaken = false
-        var prevOuter = ""
-        var prevInner = ""
-        val isTwoHopExitGuard = (effective.protocol == AetherProtocol.MASQUE && effective.mimEnabled) ||
-                (effective.protocol == AetherProtocol.GOOL && !psiphonChaining)
-        mimGuardActive = true
-        Bridge.mimGuardActive = true
-        try {
-            while (true) {
-                if (activeAttemptId.get() != attemptId) return false
-                if (round > 0) {
-                    if (!backupTaken) {
-                        originalLastconn = backupAndClearLastconn()
-                        backupTaken = true
-                    } else {
-                        clearLastconn()
-                    }
-                    effective = effective.copy(quickReconnect = false, scanMode = AetherScanMode.BALANCED)
-                    LogRepository.i("[ExitGuard] retry round=$round fresh rescan without saved gateway")
-                }
-                if (!startAetherValidated(effective, bindAddress, attemptId)) {
-                    if (round > 0) restoreLastconn(originalLastconn)
-                    return false
-                }
-                if (activeAttemptId.get() != attemptId) return false
-                if (!isTwoHopExitGuard) {
-                    return finishCoreStart(effective, attemptId)
-                }
-                val hops = LastMimHops.snapshot()
-                if (round > 0 && hops.first.isNotEmpty() && hops.first == prevOuter && hops.second == prevInner) {
-                    LogRepository.i("[ExitGuard] rescan converged on same edges, keeping tunnel outer=${hops.first} inner=${hops.second.ifEmpty { "auto" }}")
-                    restoreLastconn(originalLastconn)
-                    return finishCoreStart(effective, attemptId)
-                }
-                prevOuter = hops.first
-                prevInner = hops.second
-                val hopOuter = hops.first.ifEmpty { effective.mimOuter.trim().ifEmpty { "auto" } }
-                val hopInner = hops.second.ifEmpty { effective.mimInner.trim().ifEmpty { "auto" } }
-                if (round >= 3) {
-                    LogRepository.i("[ExitGuard] retry budget exhausted, keeping tunnel outer=$hopOuter inner=$hopInner")
-                    restoreLastconn(originalLastconn)
-                    return finishCoreStart(effective, attemptId)
-                }
-                val exit = lookupTunnelExitCountry(effective, attemptId) ?: run {
-                    LogRepository.w("[ExitGuard] exit lookup failed, keeping tunnel outer=$hopOuter inner=$hopInner")
-                    return finishCoreStart(effective, attemptId)
-                }
-                LogRepository.i("[ExitGuard] exit check round=$round protocol=${effective.protocol} exit=$exit")
-                if (exit != "IR") {
-                    if (round > 0 && effective.protocol == AetherProtocol.MASQUE && hops.second.isNotEmpty() && hops.second != "auto") {
-                        persistWorkingInner(hops.second)
-                    }
-                    return finishCoreStart(effective, attemptId)
-                }
-                round++
-                LogRepository.i("[ExitGuard] Iranian exit detected ($exit), retry $round/3 fresh rescan for non-Iran gaming/tunnel IP")
-                runCatching { runner.stop() }
-                delay(1000.milliseconds)
-            }
-        } finally {
-            mimGuardActive = false
-            Bridge.mimGuardActive = false
+        mimGuardActive = false
+        Bridge.mimGuardActive = false
+        if (!startAetherValidated(config, bindAddress, attemptId)) {
+            return false
         }
+        if (activeAttemptId.get() != attemptId) return false
+
+        scope.launch {
+            val exit = lookupTunnelExitCountry(config, attemptId)
+            if (exit != null) {
+                LogRepository.i("[ExitGuard] Exit country confirmed: $exit (Protocol: ${config.protocol})")
+            }
+        }
+        return finishCoreStart(config, attemptId)
     }
 
     private suspend fun finishCoreStart(config: AetherConfig, attemptId: Long): Boolean {
@@ -1210,10 +1158,9 @@ class ConnectionController private constructor(context: Context) : ConnectionCon
             while (currentCoroutineContext().isActive) {
                 if (activeAttemptId.get() != attemptId) return@withTimeoutOrNull false
                 val coreStatus = runner.connectionStatus.value
-                if (coreStatus == ConnectionStatus.SOCKS_READY) return@withTimeoutOrNull true
                 if (coreStatus == ConnectionStatus.ERROR) throw IllegalStateException("Core reported error during startup")
                 if (coreStatus == ConnectionStatus.STOPPED) throw IllegalStateException("Core stopped unexpectedly during startup")
-                if (probeSocksReady("127.0.0.1", proxyPort)) return@withTimeoutOrNull true
+                if (probeSocksReady("127.0.0.1", proxyPort) || isPortListening("127.0.0.1", proxyPort)) return@withTimeoutOrNull true
                 delay(250.milliseconds)
             }
             false

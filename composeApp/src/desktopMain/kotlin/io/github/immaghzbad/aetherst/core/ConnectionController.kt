@@ -139,7 +139,7 @@ actual object ConnectionController {
                     h2Fragment = true,
                     fragmentSize = effectiveConfig.fragmentSize.ifBlank { "30-60" },
                     fragmentDelay = effectiveConfig.fragmentDelay.ifBlank { "5-15" },
-                    masqueSni = effectiveConfig.masqueSni.ifBlank { "www.cloudflare.com" },
+                    masqueSni = effectiveConfig.masqueSni,
                     mtu = effectiveConfig.mtu.coerceIn(1120, 1280),
                     validateSecs = effectiveConfig.validateSecs.coerceAtLeast(15)
                 )

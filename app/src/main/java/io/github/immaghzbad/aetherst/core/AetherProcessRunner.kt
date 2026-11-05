@@ -48,6 +48,7 @@ class AetherProcessRunner(private val context: Context) {
     private val currentAttemptId = AtomicLong(0)
     private var goolOuterValidated = false
     private var dataPlaneOk = false
+    private var lastBindAddress: String = "127.0.0.1:1819"
     private val isReconnecting = AtomicBoolean(false)
 
     private val _connectionStatus = MutableStateFlow(ConnectionStatus.STOPPED)
@@ -61,6 +62,7 @@ class AetherProcessRunner(private val context: Context) {
 
             val attemptId = currentAttemptId.incrementAndGet()
             goolOuterValidated = false
+            lastBindAddress = bindAddress
             updateState(ConnectionStatus.STARTING, attemptId)
             runnerJob = scope.launch {
                 var retryCount = 0
@@ -190,8 +192,8 @@ class AetherProcessRunner(private val context: Context) {
             if (config.noDataCheck) commandList.add("--no-data-check")
             if (config.quickReconnect) commandList.add("--quick-reconnect") else commandList.add("--no-quick-reconnect")
 
-            val wiwOuter = if (config.protocol == AetherProtocol.GOOL) config.wiwOuter.trim() else ""
-            val wiwInner = if (config.protocol == AetherProtocol.GOOL) config.wiwInner.trim() else ""
+            val wiwOuter = if (config.protocol == AetherProtocol.GOOL) config.wiwOuter.trim().ifEmpty { config.peer.trim() } else ""
+            val wiwInner = if (config.protocol == AetherProtocol.GOOL) config.wiwInner.trim().ifEmpty { config.wgPeer.trim() } else ""
 
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
@@ -603,24 +605,46 @@ class AetherProcessRunner(private val context: Context) {
                 dataPlaneOk = true
                 updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
             }
-            protocol == AetherProtocol.GOOL && lower.contains("outer") && lower.contains("tunnel validated") && !lower.contains("inner") -> {
-                goolOuterValidated = true
-                updateState(ConnectionStatus.VALIDATING, attemptId)
+            protocol == AetherProtocol.GOOL -> {
+                when {
+                    lower.contains("gool ready") ||
+                    lower.contains("gool exit:") ||
+                    (lower.contains("inner") && lower.contains("tunnel validated")) ||
+                    lower.contains("wiw ready") ||
+                    lower.contains("warp-in-warp ready") -> {
+                        quickRetryPending.set(false)
+                        dataPlaneOk = true
+                        updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
+                        updateState(ConnectionStatus.SOCKS_READY, attemptId)
+                    }
+                    lower.contains("socks") && lower.contains("listening") && lower.contains(lastBindAddress) -> {
+                        quickRetryPending.set(false)
+                        dataPlaneOk = true
+                        updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
+                        updateState(ConnectionStatus.SOCKS_READY, attemptId)
+                    }
+                    lower.contains("registering the gool") ||
+                    lower.contains("validating wireguard tunnel") ||
+                    lower.contains("connect-ip status: 200") ||
+                    (lower.contains("tunnel validated") && !lower.contains("inner")) -> {
+                        goolOuterValidated = true
+                        updateState(ConnectionStatus.VALIDATING, attemptId)
+                    }
+                }
             }
-            // رفع باگ GOOL: به محض تایید نهایی تونل (tunnel validated یا data-plane verification passed یا warp-in-warp ready) وضعیت تایید شود
-            lower.contains("tunnel validated") ||
+            (protocol != AetherProtocol.GOOL) && (
+                lower.contains("tunnel validated") ||
                 lower.contains("data-plane verification passed") ||
                 lower.contains("data plane verification passed") ||
-                lower.contains("warp-in-warp ready") ||
-                lower.contains("wiw ready") ||
-                lower.contains("gool ready") ||
-                lower.contains("gool exit:") ||
-                (lower.contains("exit location") && lower.contains("accepted")) -> {
+                lower.contains("connect-ip status: 200") ||
+                lower.contains("connect-ip established") ||
+                (lower.contains("exit location") && lower.contains("accepted"))
+            ) -> {
                 quickRetryPending.set(false)
                 dataPlaneOk = true
                 updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
             }
-            lower.contains("socks") && lower.contains("listening") -> {
+            (protocol != AetherProtocol.GOOL) && lower.contains("socks") && lower.contains("listening") -> {
                 quickRetryPending.set(false)
                 dataPlaneOk = true
                 updateState(ConnectionStatus.DATAPLANE_VALIDATED, attemptId)
