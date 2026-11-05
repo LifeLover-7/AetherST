@@ -149,6 +149,22 @@ class AetherProcessRunner(private val context: PlatformContext) {
                     command.add("--fragment-delay")
                     command.add(config.fragmentDelay)
                 }
+                if (config.masqueSni.isNotBlank()) {
+                    command.add("--masque-sni")
+                    command.add(config.masqueSni.trim())
+                }
+            }
+
+            if (config.mimEnabled) {
+                command.add("--mim")
+                if (config.mimOuter.isNotBlank()) {
+                    command.add("--mim-outer")
+                    command.add(config.mimOuter.trim())
+                }
+                if (config.mimInner.isNotBlank()) {
+                    command.add("--mim-inner")
+                    command.add(config.mimInner.trim())
+                }
             }
 
             if (config.noDataCheck) command.add("--no-data-check")
@@ -229,6 +245,14 @@ class AetherProcessRunner(private val context: PlatformContext) {
                     env["AETHER_MASQUE_H2_FRAGMENT_SIZE"] = config.fragmentSize
                     env["AETHER_MASQUE_H2_FRAGMENT_DELAY"] = config.fragmentDelay
                 }
+                if (config.masqueSni.isNotBlank()) {
+                    env["AETHER_MASQUE_SNI"] = config.masqueSni.trim()
+                }
+            }
+            if (config.mimEnabled) {
+                env["AETHER_MIM"] = "1"
+                if (config.mimOuter.isNotBlank()) env["AETHER_MIM_OUTER_PEER"] = config.mimOuter.trim()
+                if (config.mimInner.isNotBlank()) env["AETHER_MIM_INNER_PEER"] = config.mimInner.trim()
             }
             if (config.httpProxyEnabled) env["AETHER_HTTP_PROXY"] = "$httpBindHost:$actualHttpPort"
             if (config.noDataCheck) {

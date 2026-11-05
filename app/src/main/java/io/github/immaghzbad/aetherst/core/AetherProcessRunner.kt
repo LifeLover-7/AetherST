@@ -174,6 +174,10 @@ class AetherProcessRunner(private val context: Context) {
                     commandList.add("--fragment-delay")
                     commandList.add(config.fragmentDelay)
                 }
+                if (config.masqueSni.isNotBlank()) {
+                    commandList.add("--masque-sni")
+                    commandList.add(config.masqueSni.trim())
+                }
             }
 
             if (config.httpProxyEnabled) {

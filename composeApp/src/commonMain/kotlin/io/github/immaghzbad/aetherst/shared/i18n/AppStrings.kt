@@ -97,6 +97,11 @@ interface AppStrings {
     val CAT_USER_INTERFACE_SUB: String
     val PRESETS_CUSTOM: String
     val PRESETS_CUSTOM_SUB: String
+    val PRESETS_MCI: String
+    val PRESETS_MCI_SUB: String
+    val PRESET_CHIP_MCI: String
+    val MASQUE_SNI: String
+    val MASQUE_SNI_SUB: String
     val PRESETS_TURBO: String
     val PRESETS_TURBO_SUB: String
     val PRESETS_THOROUGH: String

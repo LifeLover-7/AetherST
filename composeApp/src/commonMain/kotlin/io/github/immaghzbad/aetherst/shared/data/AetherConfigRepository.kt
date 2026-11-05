@@ -113,6 +113,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             h2Fragment = settings.getBoolean("${prefix}h2_fragment", false),
             fragmentSize = settings.getString("${prefix}fragment_size", "16-32"),
             fragmentDelay = settings.getString("${prefix}fragment_delay", "2-10"),
+            masqueSni = settings.getString("${prefix}masque_sni", ""),
             noDataCheck = settings.getBoolean("${prefix}no_data_check", false),
             quickReconnect = settings.getBoolean("${prefix}quick_reconnect", true),
             socksHost = cleanHost,
@@ -356,6 +357,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         settings.putBoolean("${prefix}h2_fragment", cfg.h2Fragment)
         settings.putString("${prefix}fragment_size", cfg.fragmentSize)
         settings.putString("${prefix}fragment_delay", cfg.fragmentDelay)
+        settings.putString("${prefix}masque_sni", cfg.masqueSni)
         settings.putBoolean("${prefix}no_data_check", cfg.noDataCheck)
         settings.putBoolean("${prefix}quick_reconnect", cfg.quickReconnect)
         settings.putString("${prefix}socks_host", cfg.socksHost)
@@ -491,7 +493,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             return
         }
         val targetProtocol = when (presetId) {
-            "turbo", "thorough" -> AetherProtocol.MASQUE
+            "turbo", "thorough", "mci" -> AetherProtocol.MASQUE
             "stealth" -> AetherProtocol.GOOL
             "ironclad" -> AetherProtocol.WG
             else -> return
@@ -501,6 +503,23 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         }
         val base = loadProtocolSettings(targetProtocol, current)
         var updated = when (presetId) {
+            "mci" -> base.copy(
+                presetId = "mci",
+                protocol = AetherProtocol.MASQUE,
+                noise = AetherNoise.GFW,
+                scanMode = AetherScanMode.BALANCED,
+                echEnabled = true,
+                httpProxyEnabled = false,
+                h2Mode = true,
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "www.cloudflare.com",
+                noDataCheck = false,
+                tlsGroups = "",
+                mtu = 1280,
+                connectionMode = ConnectionMode.TUNNEL
+            )
             "turbo" -> base.copy(
                 presetId = "turbo",
                 protocol = AetherProtocol.MASQUE,

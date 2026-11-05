@@ -388,6 +388,21 @@ private fun PresetPage(
                 Box(modifier = Modifier.background(IosActiveBlue.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("NON-IRAN IP", color = IosActiveBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
             }
             AppDivider()
+            IosPresetItem(
+                icon = Icons.Default.NetworkCheck,
+                iconBg = IosActiveBlue,
+                title = strings.PRESETS_MCI,
+                subtitle = strings.PRESETS_MCI_SUB,
+                isActive = config.presetId == "mci",
+                onClick = { onApplyPreset("mci"); onShowToast(strings.PRESETS_MCI, false) }
+            )
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.background(IosActiveBlue.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(strings.PRESET_CHIP_MCI, color = IosActiveBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.background(IosGroupBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("H2 TCP", color = IosSecondaryLabel, fontSize = 10.sp) }
+                Box(modifier = Modifier.background(IosActiveGreen.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("FRAGMENT", color = IosActiveGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.background(IosGroupBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("MTU 1280", color = IosSecondaryLabel, fontSize = 10.sp) }
+            }
+            AppDivider()
             IosPresetItem(icon = Icons.Default.Bolt, iconBg = AppPalette.statusScanning, title = strings.PRESETS_TURBO, subtitle = strings.PRESETS_TURBO_SUB, isActive = config.presetId == "turbo", onClick = { onApplyPreset("turbo"); onShowToast(strings.PRESETS_TURBO, false) })
             Row(modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(modifier = Modifier.background(AppPalette.statusScanning.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(strings.PRESET_CHIP_SPEED, color = AppPalette.statusScanning, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
@@ -658,6 +673,16 @@ private fun NetworkPage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> 
             }
             AppDivider()
         }
+        IosInputFieldRow(
+            icon = Icons.Default.Public,
+            iconBg = IosActiveBlue,
+            label = strings.MASQUE_SNI,
+            value = config.masqueSni,
+            onValueChange = { onUpdateConfig(config.copy(masqueSni = it.trim())) },
+            placeholder = "www.cloudflare.com",
+            testTag = "masque_sni_input"
+        )
+        AppDivider()
         IosInputFieldRow(icon = Icons.AutoMirrored.Filled.AltRoute, iconBg = AppPalette.accentVariant, label = strings.FORCED_PEER_IP, value = config.peer, onValueChange = { onUpdateConfig(config.copy(peer = it)) }, placeholder = "e.g. 1.2.3.4:443", testTag = "peer_input"); AppDivider()
         if (config.protocol == AetherProtocol.WG || config.protocol == AetherProtocol.GOOL) {
             IosInputFieldRow(icon = Icons.AutoMirrored.Filled.AltRoute, iconBg = AppPalette.accentVariant, label = strings.WG_PEER, value = config.wgPeer, onValueChange = { onUpdateConfig(config.copy(wgPeer = it)) }, placeholder = "e.g. 162.159.192.1:2408", testTag = "wg_peer_input"); AppDivider()
