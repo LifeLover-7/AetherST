@@ -224,7 +224,7 @@ object IpInfoRepository {
                     val code = root["countryCode"]?.jsonPrimitive?.content ?: ""
                     val name = root["countryName"]?.jsonPrimitive?.content ?: info.country
                     if (code.length == 2) {
-                        info.copy(country = name, countryCode = code, flag = getFlagEmoji(code))
+                        info.copy(country = name, countryCode = code, flagEmoji = getFlagEmoji(code))
                     } else info
                 } else info
             }
