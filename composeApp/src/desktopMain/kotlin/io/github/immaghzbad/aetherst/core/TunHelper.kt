@@ -24,7 +24,13 @@ object TunHelper {
     private var tailThread: Thread? = null
     @Volatile private var targetSocksPort = 1819
 
-    fun start(socksTargetPort: Int, configuredMtu: Int = DEFAULT_TUN_MTU) {
+    fun start(
+        socksTargetPort: Int,
+        configuredMtu: Int = DEFAULT_TUN_MTU,
+        bypassExes: Set<String> = emptySet(),
+        blockedExes: Set<String> = emptySet(),
+        tunnelAllApps: Boolean = true
+    ) {
         if (isRunning.getAndSet(true)) return
         targetSocksPort = socksTargetPort
         
@@ -40,7 +46,7 @@ object TunHelper {
             val dataDirFile = File(dataDir)
 
             File(dataDir, HEV_YAML).writeText(buildHevConfig(socksTargetPort, safeMtu))
-            writeParams(socksTargetPort, dataDirFile, safeMtu)
+            writeParams(socksTargetPort, dataDirFile, safeMtu, bypassExes, blockedExes, tunnelAllApps)
             File(dataDir, STOP_FLAG).delete()
             writeHelperScript(dataDirFile)
 
@@ -58,7 +64,7 @@ object TunHelper {
                 )
             }
             ProcessBuilder(*command).redirectErrorStream(true).start()
-            LogRepository.i("[Tun] Direct helper started pointing to $socksTargetPort (mtu=$safeMtu), pid=$appPid")
+            LogRepository.i("[Tun] Direct helper started pointing to $socksTargetPort (mtu=$safeMtu), bypass=${bypassExes.size}, blocked=${blockedExes.size}, pid=$appPid")
 
             startTailing(dataDirFile)
         } catch (e: Exception) {
@@ -117,10 +123,22 @@ object TunHelper {
             |""".trimMargin()
     }
 
-    private fun writeParams(socksTargetPort: Int, dataDir: File, mtu: Int) {
+    private fun writeParams(
+        socksTargetPort: Int,
+        dataDir: File,
+        mtu: Int,
+        bypassExes: Set<String> = emptySet(),
+        blockedExes: Set<String> = emptySet(),
+        tunnelAllApps: Boolean = true
+    ) {
         val endpointIps = collectEndpointIps().joinToString(",") { "\"$it\"" }
+        // فقط مسیرهای معتبر .exe روی ویندوز را پاس می‌دهیم
+        val validBypass = bypassExes.filter { it.isNotBlank() && it.endsWith(".exe", ignoreCase = true) }
+        val validBlocked = blockedExes.filter { it.isNotBlank() && it.endsWith(".exe", ignoreCase = true) }
+        val bypassJson = validBypass.joinToString(",") { "\"${it.replace("\\", "\\\\").replace("\"", "\\\"")}\"" }
+        val blockedJson = validBlocked.joinToString(",") { "\"${it.replace("\\", "\\\\").replace("\"", "\\\"")}\"" }
         val json = """
-            {"tunName":"$TUN_NAME","tunIp":"$TUN_IPV4","dnsFake":"$DNS_FAKE","socksPort":$socksTargetPort,"targetSocksPort":$socksTargetPort,"mtu":$mtu,"endpointIps":[$endpointIps]}
+            {"tunName":"$TUN_NAME","tunIp":"$TUN_IPV4","dnsFake":"$DNS_FAKE","socksPort":$socksTargetPort,"targetSocksPort":$socksTargetPort,"mtu":$mtu,"endpointIps":[$endpointIps],"bypassExes":[$bypassJson],"blockedExes":[$blockedJson],"tunnelAllApps":$tunnelAllApps}
         """.trimIndent()
         File(dataDir, PARAMS_FILE).writeText(json)
     }
@@ -216,6 +234,31 @@ object TunHelper {
             |try { Set-DnsClientServerAddress -InterfaceIndex ${'$'}ifIndex -ServerAddresses ${'$'}params.dnsFake -ErrorAction Stop | Out-Null } catch { netsh interface ipv4 set dnsservers name="$(${'$'}params.tunName)" static ${'$'}params.dnsFake primary 2>&1 | Out-Null }
             |Add-TunRoutes ${'$'}ifIndex
             |L "routes present: $(Test-TunRoutes)"
+            |# ---- Split Tunneling: قوانین Windows Firewall ----
+            |function Apply-SplitTunnelingRules(${'$'}tunAlias) {
+            |    # پاک‌سازی قوانین قبلی AetherST
+            |    Get-NetFirewallRule -DisplayName "AetherST_Split_*" -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue
+            |    # اپ‌های Blocked: قطع کامل اینترنت (بلاک روی همه interface‌ها)
+            |    foreach (${'$'}exe in ${'$'}params.blockedExes) {
+            |        if (${'$'}exe -and (Test-Path ${'$'}exe)) {
+            |            ${'$'}hash = [Math]::Abs(${'$'}exe.GetHashCode())
+            |            New-NetFirewallRule -DisplayName "AetherST_Split_Block_${'$'}hash" -Direction Outbound -Program ${'$'}exe -Action Block -ErrorAction SilentlyContinue | Out-Null
+            |            L "Firewall BLOCK rule for: ${'$'}exe"
+            |        }
+            |    }
+            |    # اپ‌های Bypass (فقط وقتی tunnelAllApps=true): بلاک از TUN، رد از شبکه فیزیکی
+            |    if (${'$'}params.tunnelAllApps) {
+            |        foreach (${'$'}exe in ${'$'}params.bypassExes) {
+            |            if (${'$'}exe -and (Test-Path ${'$'}exe)) {
+            |                ${'$'}hash = [Math]::Abs(${'$'}exe.GetHashCode())
+            |                New-NetFirewallRule -DisplayName "AetherST_Split_Bypass_${'$'}hash" -Direction Outbound -Program ${'$'}exe -InterfaceAlias ${'$'}tunAlias -Action Block -ErrorAction SilentlyContinue | Out-Null
+            |                L "Firewall BYPASS rule for: ${'$'}exe (blocked from TUN, uses physical adapter)"
+            |            }
+            |        }
+            |    }
+            |    L "Split tunneling rules applied: blocked=${'$'}(${'$'}params.blockedExes.Count) bypass=${'$'}(${'$'}params.bypassExes.Count) tunnelAllApps=${'$'}(${'$'}params.tunnelAllApps)"
+            |}
+            |Apply-SplitTunnelingRules ${'$'}params.tunName
             |${'$'}gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Where-Object { ${'$'}_.InterfaceAlias -ne ${'$'}params.tunName -and ${'$'}_.NextHop -ne '0.0.0.0' } | Sort-Object RouteMetric | Select-Object -First 1).NextHop
             |if (-not ${'$'}gw) { ${'$'}gw = (Get-NetIPConfiguration | Where-Object { ${'$'}_.NetAdapter.Status -eq 'Up' -and ${'$'}_.IPv4DefaultGateway -ne ${'$'}null } | Select-Object -First 1).IPv4DefaultGateway.NextHop }
             |L "physical gateway ${'$'}gw"
@@ -237,6 +280,9 @@ object TunHelper {
             |}
             |# پاک‌سازی کامل هنگام قطع اتصال
             |try { Remove-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -ErrorAction SilentlyContinue | Out-Null } catch {}
+            |# پاک‌سازی قوانین split tunneling
+            |try { Get-NetFirewallRule -DisplayName "AetherST_Split_*" -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue } catch {}
+            |L "Split tunneling firewall rules cleaned up"
             |try { Clear-DnsClientCache -ErrorAction SilentlyContinue | Out-Null } catch {}
             |try { Get-NetAdapter | Where-Object { ${'$'}_.Status -eq 'Up' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex ${'$'}_.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue } } catch {}
             |route delete 0.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null

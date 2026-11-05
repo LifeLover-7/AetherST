@@ -245,8 +245,14 @@ actual object ConnectionController {
         private fun startTunnelMode(config: AetherConfig, targetPort: Int) {
             if (tunnelModeStarted) return
             tunnelModeStarted = true
-            TunHelper.start(targetPort, config.mtu)
-            LogRepository.i("[Controller] TUN helper directly connected to port $targetPort")
+            TunHelper.start(
+                socksTargetPort = targetPort,
+                configuredMtu = config.mtu,
+                bypassExes = config.excludedPackages,
+                blockedExes = config.blockedPackages,
+                tunnelAllApps = config.tunnelAllApps
+            )
+            LogRepository.i("[Controller] TUN helper started on port $targetPort, bypass=${config.excludedPackages.size}, blocked=${config.blockedPackages.size}")
         }
 
         fun stop() {

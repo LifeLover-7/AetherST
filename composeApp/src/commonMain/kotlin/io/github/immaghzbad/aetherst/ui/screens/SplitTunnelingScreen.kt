@@ -120,7 +120,13 @@ fun SplitTunnelingScreen(
     LaunchedEffect(showHelpDialog) { if (showHelpDialog) animateDialog = true }
 
     val blockedCount = blockedPackages.size
-    val bypassCount = if (tunnelAllApps) excludedPackages.size else (effectiveApps.size - tunneledPackages.size - blockedCount).coerceAtLeast(0)
+    val bypassCount = if (tunnelAllApps) {
+        excludedPackages.size
+    } else {
+        effectiveApps.count { app ->
+            !tunneledPackages.contains(app.packageName) && !blockedPackages.contains(app.packageName)
+        }
+    }
     val tunneledCount = if (tunnelAllApps) (effectiveApps.size - bypassCount - blockedCount).coerceAtLeast(0) else tunneledPackages.size
 
     val filteredApps = remember(effectiveApps, searchQuery, selectedTab, excludedPackages, tunneledPackages, blockedPackages, modeFilter, tunnelAllApps) {
@@ -282,6 +288,8 @@ fun SplitTunnelingScreen(
                     onUpdateMode = { m -> onUpdateMode(app.packageName, m) },
                     onRemoveApp = if (isWindowsDesktop) {
                         {
+                            // وقتی tunnelAllApps=true، حذف = برگشت به تونل (mode 1)
+                            // وقتی tunnelAllApps=false، حذف = برگشت به bypass (mode 0 - از لیست tunnel خارج می‌شود)
                             onUpdateMode(app.packageName, if (tunnelAllApps) 1 else 0)
                             SplitTunnelAppManager.onRemoveApp?.invoke(app.packageName)
                         }

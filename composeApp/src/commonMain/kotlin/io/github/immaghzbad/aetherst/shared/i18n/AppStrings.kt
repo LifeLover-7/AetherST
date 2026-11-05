@@ -748,6 +748,7 @@ interface AppStrings {
     val TOAST_MTU_FAILED: String
     val TOAST_AUTODETECT_APPLIED: String
     val TOAST_DISCONNECT_FIRST: String
+    val TOAST_SPLIT_TUNNELING_SAVED: String
     val TOAST_COPIED: String
     val TOAST_BACKUP_EXPORTED: String
     val TOAST_BACKUP_EXPORT_FAILED: String

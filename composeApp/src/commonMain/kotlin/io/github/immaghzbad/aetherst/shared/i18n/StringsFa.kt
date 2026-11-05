@@ -1,4 +1,4 @@
-﻿package io.github.immaghzbad.aetherst.shared.i18n
+package io.github.immaghzbad.aetherst.shared.i18n
 
 object StringsFa : AppStrings {
     override val APP_TITLE = "AetherST Tunnel"
@@ -746,6 +746,7 @@ object StringsFa : AppStrings {
     override val TOAST_MTU_FAILED = "پیدا کردن MTU نشد، رفتیم روی پیش‌فرض امن"
     override val TOAST_AUTODETECT_APPLIED = "تنظیمات خودکار اعمال شد!"
     override val TOAST_DISCONNECT_FIRST = "اول قطع کن بعد تنظیمات رو عوض کن"
+    override val TOAST_SPLIT_TUNNELING_SAVED = "تفکیک اپ‌ها ذخیره شد — در اتصال بعدی اعمال می‌شود"
     override val TOAST_COPIED = "کپی شد"
     override val TOAST_BACKUP_EXPORTED = "بکاپ با موفقیت ذخیره شد"
     override val TOAST_BACKUP_EXPORT_FAILED = "بکاپ ذخیره نشد"

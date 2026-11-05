@@ -291,10 +291,20 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
         when (modeOrdinal) {
             1 -> tunneled.add(packageName)
             2 -> blocked.add(packageName)
-            else -> excluded.add(packageName)
+            // mode 0 = bypass: فقط در حالت tunnelAllApps=true به excluded اضافه می‌شود
+            // در حالت tunnelAllApps=false، حالت پیش‌فرض bypass است (نه در tunneledPackages)
+            else -> if (current.tunnelAllApps) excluded.add(packageName)
         }
-        updateConfig(current.copy(tunneledPackages = tunneled.toSet(), blockedPackages = blocked.toSet(), excludedPackages = excluded.toSet()))
-        restartConnection()
+        // ذخیره مستقیم بدون نیاز به قطع اتصال — split tunneling در اتصال بعدی اعمال می‌شود
+        repository.updateConfig(current.copy(
+            tunneledPackages = tunneled.toSet(),
+            blockedPackages = blocked.toSet(),
+            excludedPackages = excluded.toSet()
+        ))
+        val state = connectionStatus.value
+        if (state == ConnectionStatus.RUNNING || state == ConnectionStatus.VALIDATING) {
+            showToast(localizedToast { TOAST_SPLIT_TUNNELING_SAVED })
+        }
     }
 
     fun bulkUpdateAppSplitTunnelingMode(packageNames: List<String>, modeOrdinal: Int) {
@@ -310,11 +320,20 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
             when (modeOrdinal) {
                 1 -> tunneled.add(pkg)
                 2 -> blocked.add(pkg)
-                else -> excluded.add(pkg)
+                // mode 0 = bypass: فقط در حالت tunnelAllApps=true به excluded اضافه می‌شود
+                else -> if (current.tunnelAllApps) excluded.add(pkg)
             }
         }
-        updateConfig(current.copy(tunneledPackages = tunneled.toSet(), blockedPackages = blocked.toSet(), excludedPackages = excluded.toSet()))
-        restartConnection()
+        // ذخیره مستقیم بدون نیاز به قطع اتصال
+        repository.updateConfig(current.copy(
+            tunneledPackages = tunneled.toSet(),
+            blockedPackages = blocked.toSet(),
+            excludedPackages = excluded.toSet()
+        ))
+        val state = connectionStatus.value
+        if (state == ConnectionStatus.RUNNING || state == ConnectionStatus.VALIDATING) {
+            showToast(localizedToast { TOAST_SPLIT_TUNNELING_SAVED })
+        }
     }
 
     fun addRoutingRule(pattern: String, mode: RoutingMode) {
