@@ -1,4 +1,5 @@
 import com.android.build.api.dsl.LibraryExtension
+import org.gradle.language.jvm.tasks.ProcessResources
 
 plugins {
     alias(libs.plugins.kotlin.multiplatform)
@@ -46,7 +47,6 @@ kotlin {
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.okhttp)
             implementation(libs.okio)
-            implementation(libs.moshi.kotlin)
             implementation(libs.kotlinx.serialization.json)
         }
         if (!isAndroidDisabled) {
@@ -105,7 +105,11 @@ val buildCloakWindows by tasks.registering(Exec::class) {
         }
     }
 }
-tasks.named("desktopProcessResources") { dependsOn(buildCloakWindows) }
+tasks.named<ProcessResources>("desktopProcessResources") {
+    dependsOn(buildCloakWindows)
+    // Avoid duplicate bundling in JAR; appResourcesRootDir provides binaries externally in the distribution
+    exclude("bin/**")
+}
 
 compose.desktop {
     application {
@@ -116,6 +120,8 @@ compose.desktop {
             packageVersion = "1.1.1"
             vendor = "ImMaghzBad"
             description = "AetherST High-Performance Proxy Tunnel"
+
+            modules("java.instrument", "jdk.unsupported")
 
             appResourcesRootDir.set(project.layout.projectDirectory.dir("src/desktopMain/resources"))
 

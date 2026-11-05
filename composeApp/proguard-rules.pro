@@ -2,7 +2,23 @@
 -keepattributes RuntimeVisible*Annotation*,AnnotationDefault
 -dontoptimize
 -dontnote **
--keep class androidx.compose.** { *; }
+
+# Compose Core & UI
+-keep class androidx.compose.runtime.** { *; }
+-keep class androidx.compose.ui.** { *; }
+-keep class androidx.compose.animation.** { *; }
+-keep class androidx.compose.foundation.** { *; }
+-keep class androidx.compose.material3.** { *; }
+-keep class androidx.compose.material.ripple.** { *; }
+-keep class androidx.compose.material.Colors { *; }
+-keep class androidx.compose.material.MaterialTheme* { *; }
+-keep class androidx.compose.material.Typography { *; }
+-keep class androidx.compose.material.Shapes { *; }
+-keep class androidx.compose.material.Icon* { *; }
+-keep class androidx.compose.material.icons.Icons* { *; }
+# Allow dead-code elimination on unreferenced Material icons
+-dontwarn androidx.compose.material.icons.**
+
 -keep class org.jetbrains.compose.** { *; }
 -keep class org.jetbrains.skiko.** { *; }
 -keep class org.jetbrains.skia.** { *; }
@@ -13,7 +29,6 @@
     @androidx.compose.runtime.Composable *;
     @androidx.compose.runtime.ReadOnlyComposable *;
 }
--keep class androidx.compose.runtime.** { *; }
 -keep class io.github.immaghzbad.aetherst.MainKt { *; }
 -keep class io.github.immaghzbad.aetherst.** { *; }
 -keep class io.github.immaghzbad.aetherst.platform.** { *; }
@@ -36,7 +51,7 @@
 -keep class kotlinx.serialization.** { *; }
 -keep class kotlinx.coroutines.** { *; }
 -keep class kotlin.** { *; }
--keep class kotlin.reflect.** { *; }
+-dontwarn kotlin.reflect.**
 -keep class okhttp3.** { *; }
 -keep interface okhttp3.** { *; }
 -keep class okio.** { *; }
