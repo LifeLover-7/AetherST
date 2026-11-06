@@ -139,10 +139,14 @@ actual object ConnectionController {
                     h2Fragment = true,
                     fragmentSize = effectiveConfig.fragmentSize.ifBlank { "30-60" },
                     fragmentDelay = effectiveConfig.fragmentDelay.ifBlank { "5-15" },
-                    masqueSni = effectiveConfig.masqueSni,
+                    masqueSni = effectiveConfig.masqueSni.ifBlank { "consumer-masque.cloudflareclient.com" },
                     mtu = effectiveConfig.mtu.coerceIn(1120, 1280),
                     validateSecs = effectiveConfig.validateSecs.coerceAtLeast(15)
                 )
+            } else if (effectiveConfig.protocol == AetherProtocol.MASQUE) {
+                if (effectiveConfig.masqueSni.isBlank()) {
+                    effectiveConfig = effectiveConfig.copy(masqueSni = "consumer-masque.cloudflareclient.com")
+                }
             } else if (CloakController.isSupported(effectiveConfig)) {
                 val started = runCatching { CloakController.start(context, effectiveConfig) }.getOrDefault(false)
                 if (started && CloakController.isRunning()) {

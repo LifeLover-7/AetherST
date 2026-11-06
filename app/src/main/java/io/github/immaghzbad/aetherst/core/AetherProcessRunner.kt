@@ -1,6 +1,7 @@
 package io.github.immaghzbad.aetherst.core
 
 import android.content.Context
+import io.github.immaghzbad.aetherst.shared.data.IpInfoRepository
 import io.github.immaghzbad.aetherst.shared.data.LogRepository
 import io.github.immaghzbad.aetherst.shared.model.*
 import kotlinx.coroutines.CancellationException
@@ -38,6 +39,7 @@ object LastMimHops {
 
 private val MimOuterRegex = Regex("""selected\s+MASQUE\s+gateway\s+(\S+)""", RegexOption.IGNORE_CASE)
 private val MimReadyRegex = Regex("""masque-in-masque\s+ready:?\s*(\S+)\s*\(outer\)\s+and\s+(\S+)\s*\(inner\)""", RegexOption.IGNORE_CASE)
+private val ExitDetailRegex = Regex("""(?i)\b(?:gool|masque|wireguard|wg|mim)\s+exit:\s*([0-9a-fA-F.:]+),\s*([A-Za-z]{2})(?:\s+via\s+([A-Za-z0-9]+))?""")
 
 class AetherProcessRunner(private val context: Context) {
 
@@ -162,7 +164,7 @@ class AetherProcessRunner(private val context: Context) {
                 }
             )
 
-            val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.ZERO_TRUST || config.protocol == AetherProtocol.GOOL || config.mimEnabled
+            val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.ZERO_TRUST || (config.protocol == AetherProtocol.GOOL && !config.goolClassic) || config.mimEnabled
             if (isMasqueBased) {
                 if (config.h2Mode) commandList.add("--h2")
                 if (config.echEnabled) {
@@ -172,13 +174,20 @@ class AetherProcessRunner(private val context: Context) {
                 if (config.h2Fragment) {
                     commandList.add("--fragment")
                     commandList.add("--fragment-size")
-                    commandList.add(config.fragmentSize)
+                    commandList.add(config.fragmentSize.ifBlank { "30-60" })
                     commandList.add("--fragment-delay")
-                    commandList.add(config.fragmentDelay)
+                    commandList.add(config.fragmentDelay.ifBlank { "5-15" })
                 }
-                if (config.masqueSni.isNotBlank()) {
+                val effectiveSni = if (config.masqueSni.isNotBlank()) {
+                    config.masqueSni.trim()
+                } else if (config.protocol != AetherProtocol.ZERO_TRUST) {
+                    "consumer-masque.cloudflareclient.com"
+                } else {
+                    ""
+                }
+                if (effectiveSni.isNotBlank()) {
                     commandList.add("--masque-sni")
-                    commandList.add(config.masqueSni.trim())
+                    commandList.add(effectiveSni)
                 }
             }
 
@@ -197,13 +206,29 @@ class AetherProcessRunner(private val context: Context) {
 
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
-                    if (wiwOuter.isNotEmpty()) {
-                        commandList.add("--peer")
-                        commandList.add(wiwOuter)
-                    }
-                    if (wiwInner.isNotEmpty()) {
-                        commandList.add("--gool-peer")
-                        commandList.add(wiwInner)
+                    if (config.goolClassic) {
+                        commandList.add("--gool-classic")
+                        if (wiwOuter.isNotEmpty()) {
+                            commandList.add("--wiw-outer")
+                            commandList.add(wiwOuter)
+                        }
+                        if (wiwInner.isNotEmpty()) {
+                            commandList.add("--wiw-inner")
+                            commandList.add(wiwInner)
+                        }
+                        if (config.wiwScan) {
+                            commandList.add("--wiw-scan")
+                        }
+                    } else {
+                        commandList.add("--gool")
+                        if (wiwOuter.isNotEmpty()) {
+                            commandList.add("--peer")
+                            commandList.add(wiwOuter)
+                        }
+                        if (wiwInner.isNotEmpty()) {
+                            commandList.add("--gool-peer")
+                            commandList.add(wiwInner)
+                        }
                     }
                 }
                 AetherProtocol.WG -> {
@@ -346,11 +371,18 @@ class AetherProcessRunner(private val context: Context) {
                 if (config.echEnabled) env["AETHER_ECH"] = "auto"
                 if (config.h2Fragment) {
                     env["AETHER_MASQUE_H2_FRAGMENT"] = "1"
-                    env["AETHER_MASQUE_H2_FRAGMENT_SIZE"] = config.fragmentSize
-                    env["AETHER_MASQUE_H2_FRAGMENT_DELAY"] = config.fragmentDelay
+                    env["AETHER_MASQUE_H2_FRAGMENT_SIZE"] = config.fragmentSize.ifBlank { "30-60" }
+                    env["AETHER_MASQUE_H2_FRAGMENT_DELAY"] = config.fragmentDelay.ifBlank { "5-15" }
                 }
-                if (config.masqueSni.isNotBlank()) {
-                    env["AETHER_MASQUE_SNI"] = config.masqueSni.trim()
+                val effectiveSni = if (config.masqueSni.isNotBlank()) {
+                    config.masqueSni.trim()
+                } else if (config.protocol != AetherProtocol.ZERO_TRUST) {
+                    "consumer-masque.cloudflareclient.com"
+                } else {
+                    ""
+                }
+                if (effectiveSni.isNotBlank()) {
+                    env["AETHER_MASQUE_SNI"] = effectiveSni
                 }
             }
 
@@ -369,8 +401,15 @@ class AetherProcessRunner(private val context: Context) {
 
             when (config.protocol) {
                 AetherProtocol.GOOL -> {
-                    if (wiwOuter.isNotEmpty()) env["AETHER_PEER"] = wiwOuter
-                    if (wiwInner.isNotEmpty()) env["AETHER_GOOL_PEER"] = wiwInner
+                    if (config.goolClassic) {
+                        env["AETHER_GOOL_MODE"] = "classic"
+                        if (wiwOuter.isNotEmpty()) env["AETHER_WIW_OUTER_PEER"] = wiwOuter
+                        if (wiwInner.isNotEmpty()) env["AETHER_WIW_INNER_PEER"] = wiwInner
+                        if (config.wiwScan) env["AETHER_WIW_PEERS"] = "auto"
+                    } else {
+                        if (wiwOuter.isNotEmpty()) env["AETHER_PEER"] = wiwOuter
+                        if (wiwInner.isNotEmpty()) env["AETHER_GOOL_PEER"] = wiwInner
+                    }
                 }
                 AetherProtocol.WG -> {
                     val wgPeer = config.wgPeer.trim().ifEmpty { config.peer.trim() }
@@ -545,6 +584,15 @@ class AetherProcessRunner(private val context: Context) {
         if (protocol == AetherProtocol.ZERO_TRUST && isZeroTrustCodePrompt(lower)) {
             onCodeRequired()
             return
+        }
+
+        ExitDetailRegex.find(line)?.let { match ->
+            val ip = match.groupValues.getOrNull(1)?.trim() ?: ""
+            val country = match.groupValues.getOrNull(2)?.trim()?.uppercase() ?: ""
+            val colo = match.groupValues.getOrNull(3)?.trim() ?: ""
+            if (ip.isNotEmpty() && country.length == 2) {
+                IpInfoRepository.updateFromExitLine(ip, country, colo)
+            }
         }
 
         if (lower.contains("masque") || lower.contains("warp-in-warp") || lower.contains("wireguard")) {

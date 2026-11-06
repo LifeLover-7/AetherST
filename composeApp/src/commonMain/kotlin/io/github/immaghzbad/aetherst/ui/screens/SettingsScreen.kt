@@ -385,6 +385,21 @@ private fun PresetPage(
                 Box(modifier = Modifier.background(IosGroupBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("MTU 1280", color = IosSecondaryLabel, fontSize = 10.sp) }
             }
             AppDivider()
+            IosPresetItem(
+                icon = Icons.Default.NetworkCheck,
+                iconBg = Color(0xFFFFCC00),
+                title = strings.PRESETS_IRANCELL,
+                subtitle = strings.PRESETS_IRANCELL_SUB,
+                isActive = config.presetId == "irancell",
+                onClick = { onApplyPreset("irancell"); onShowToast(strings.PRESETS_IRANCELL, false) }
+            )
+            Row(modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.background(Color(0xFFFFCC00).copy(alpha = 0.2f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(strings.PRESET_CHIP_IRANCELL, color = Color(0xFFCC9900), fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.background(IosActiveGreen.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("GOOL DUAL", color = IosActiveGreen, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+                Box(modifier = Modifier.background(IosGroupBg, RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("H2+FRAG", color = IosSecondaryLabel, fontSize = 10.sp) }
+                Box(modifier = Modifier.background(IosActiveBlue.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text("NON-IRAN IP", color = IosActiveBlue, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
+            }
+            AppDivider()
             IosPresetItem(icon = Icons.Default.Bolt, iconBg = AppPalette.statusScanning, title = strings.PRESETS_TURBO, subtitle = strings.PRESETS_TURBO_SUB, isActive = config.presetId == "turbo", onClick = { onApplyPreset("turbo"); onShowToast(strings.PRESETS_TURBO, false) })
             Row(modifier = Modifier.fillMaxWidth().padding(start = 58.dp, end = 16.dp, bottom = 10.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(modifier = Modifier.background(AppPalette.statusScanning.copy(alpha = 0.15f), RoundedCornerShape(6.dp)).padding(horizontal = 6.dp, vertical = 2.dp)) { Text(strings.PRESET_CHIP_SPEED, color = AppPalette.statusScanning, fontSize = 10.sp, fontWeight = FontWeight.Bold) }
@@ -664,7 +679,7 @@ private fun NetworkPage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> 
             label = strings.MASQUE_SNI,
             value = config.masqueSni,
             onValueChange = { onUpdateConfig(config.copy(masqueSni = it.trim())) },
-            placeholder = "www.cloudflare.com",
+            placeholder = "consumer-masque.cloudflareclient.com",
             testTag = "masque_sni_input"
         )
         AppDivider()
@@ -673,6 +688,7 @@ private fun NetworkPage(config: AetherConfig, onUpdateConfig: (AetherConfig) -> 
             IosInputFieldRow(icon = Icons.AutoMirrored.Filled.AltRoute, iconBg = AppPalette.accentVariant, label = strings.WG_PEER, value = config.wgPeer, onValueChange = { onUpdateConfig(config.copy(wgPeer = it)) }, placeholder = "e.g. 162.159.192.1:2408", testTag = "wg_peer_input"); AppDivider()
         }
         if (config.protocol == AetherProtocol.GOOL) {
+            IosSwitchRow(icon = Icons.Default.AltRoute, iconBg = AppPalette.accent, title = strings.GOOL_CLASSIC_MODE, subtitle = strings.GOOL_CLASSIC_MODE_SUB, checked = config.goolClassic, onCheckedChange = { onUpdateConfig(config.copy(goolClassic = it)) }, testTag = "switch_gool_classic"); AppDivider()
             IosInputFieldRow(icon = Icons.AutoMirrored.Filled.AltRoute, iconBg = AppPalette.accentVariant, label = strings.WIW_OUTER, value = config.wiwOuter, onValueChange = { onUpdateConfig(config.copy(wiwOuter = it)) }, placeholder = "e.g. 162.159.192.1:2408", testTag = "wiw_outer_input"); AppDivider()
             IosInputFieldRow(icon = Icons.AutoMirrored.Filled.AltRoute, iconBg = AppPalette.accentVariant, label = strings.WIW_INNER, value = config.wiwInner, onValueChange = { onUpdateConfig(config.copy(wiwInner = it)) }, placeholder = "e.g. 188.114.96.1:2408", testTag = "wiw_inner_input"); AppDivider()
             IosSwitchRow(icon = Icons.Default.Radar, iconBg = AppPalette.statusScanning, title = strings.WIW_SCAN, subtitle = strings.WIW_SCAN_SUB, checked = config.wiwScan, onCheckedChange = { onUpdateConfig(config.copy(wiwScan = it)) }, testTag = "switch_wiw_scan"); AppDivider()

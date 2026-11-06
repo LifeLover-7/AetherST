@@ -100,6 +100,9 @@ interface AppStrings {
     val PRESETS_MCI: String
     val PRESETS_MCI_SUB: String
     val PRESET_CHIP_MCI: String
+    val PRESETS_IRANCELL: String
+    val PRESETS_IRANCELL_SUB: String
+    val PRESET_CHIP_IRANCELL: String
     val MASQUE_SNI: String
     val MASQUE_SNI_SUB: String
     val PRESETS_TURBO: String
@@ -185,6 +188,8 @@ interface AppStrings {
     val WIW_INNER: String
     val WIW_SCAN: String
     val WIW_SCAN_SUB: String
+    val GOOL_CLASSIC_MODE: String
+    val GOOL_CLASSIC_MODE_SUB: String
     val MASQUE_INNER_MTU: String
     val NETSTACK_TCP_RX: String
     val NETSTACK_TCP_TX: String

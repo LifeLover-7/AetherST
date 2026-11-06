@@ -125,12 +125,14 @@ object IpInfoRepository {
                 }
                 LogRepository.w("${if (useProxy) "SOCKS proxy" else "Direct"} IP lookup failed after all attempts.", "IpWhois")
                 val prev = _ipInfo.value
-                _ipInfo.value = prev.copy(
-                    isLoading = false,
-                    error = if (prev.ip.isEmpty()) if (useProxy) "Proxy Lookup Failed" else "Direct Lookup Failed" else null
-                )
-                if (prev.ip.isNotEmpty()) {
+                val isStaleIranInProxy = useProxy && prev.countryCode.uppercase() == "IR"
+                if (prev.ip.isNotEmpty() && !isStaleIranInProxy) {
                     _ipInfo.value = prev.copy(isLoading = false, error = null)
+                } else {
+                    _ipInfo.value = prev.copy(
+                        isLoading = false,
+                        error = if (useProxy) "Proxy Lookup Failed" else "Direct Lookup Failed"
+                    )
                 }
             }
         } finally {
@@ -718,6 +720,26 @@ object IpInfoRepository {
                 } else null
             }
         } catch (_: Throwable) { null }
+    }
+
+    fun updateFromExitLine(ip: String, countryCode: String, colo: String = "") {
+        val upperCountry = countryCode.trim().uppercase()
+        val flag = getFlagEmoji(upperCountry)
+        val current = _ipInfo.value
+        val countryName = runCatching {
+            java.util.Locale("", upperCountry).displayCountry.takeIf { it.isNotBlank() }
+        }.getOrNull() ?: upperCountry
+        _ipInfo.value = current.copy(
+            ip = ip.trim(),
+            country = countryName,
+            countryCode = upperCountry,
+            flagEmoji = flag,
+            city = if (colo.isNotBlank()) "Cloudflare $colo" else current.city,
+            isp = "Cloudflare WARP",
+            isLoading = false,
+            error = null
+        )
+        LogRepository.i("Instant exit location updated: ${ip.trim()} ($upperCountry - $countryName)", "IpWhois")
     }
 
     fun reset() { _ipInfo.value = IpInfo() }

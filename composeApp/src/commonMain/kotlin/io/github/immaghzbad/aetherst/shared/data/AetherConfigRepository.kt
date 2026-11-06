@@ -113,7 +113,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             h2Fragment = settings.getBoolean("${prefix}h2_fragment", true),
             fragmentSize = settings.getString("${prefix}fragment_size", "30-60"),
             fragmentDelay = settings.getString("${prefix}fragment_delay", "5-15"),
-            masqueSni = settings.getString("${prefix}masque_sni", ""),
+            masqueSni = settings.getString("${prefix}masque_sni", "consumer-masque.cloudflareclient.com").ifBlank { "consumer-masque.cloudflareclient.com" },
             noDataCheck = settings.getBoolean("${prefix}no_data_check", false),
             quickReconnect = settings.getBoolean("${prefix}quick_reconnect", true),
             socksHost = cleanHost,
@@ -126,6 +126,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             wiwOuter = settings.getString("${prefix}wiw_outer", ""),
             wiwInner = settings.getString("${prefix}wiw_inner", ""),
             wiwScan = settings.getBoolean("${prefix}wiw_scan", true),
+            goolClassic = settings.getBoolean("${prefix}gool_classic", false),
             masqueMtu = settings.getInt("${prefix}masque_mtu", 0),
             netstackTcpRx = settings.getInt("${prefix}netstack_tcp_rx", 0),
             netstackTcpTx = settings.getInt("${prefix}netstack_tcp_tx", 0),
@@ -370,6 +371,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         settings.putString("${prefix}wiw_outer", cfg.wiwOuter)
         settings.putString("${prefix}wiw_inner", cfg.wiwInner)
         settings.putBoolean("${prefix}wiw_scan", cfg.wiwScan)
+        settings.putBoolean("${prefix}gool_classic", cfg.goolClassic)
         settings.putInt("${prefix}masque_mtu", cfg.masqueMtu.coerceIn(0, 9000))
         settings.putInt("${prefix}netstack_tcp_rx", cfg.netstackTcpRx.coerceIn(0, 67108864))
         settings.putInt("${prefix}netstack_tcp_tx", cfg.netstackTcpTx.coerceIn(0, 67108864))
@@ -494,7 +496,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         }
         val targetProtocol = when (presetId) {
             "turbo", "thorough", "mci" -> AetherProtocol.MASQUE
-            "stealth", "gaming" -> AetherProtocol.GOOL
+            "stealth", "gaming", "irancell" -> AetherProtocol.GOOL
             "ironclad" -> AetherProtocol.WG
             else -> return
         }
@@ -514,10 +516,30 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 h2Fragment = true,
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
-                masqueSni = "",
+                masqueSni = "consumer-masque.cloudflareclient.com",
                 noDataCheck = false,
                 tlsGroups = "",
                 mtu = 1280,
+                connectionMode = ConnectionMode.TUNNEL
+            )
+            "irancell" -> base.copy(
+                presetId = "irancell",
+                protocol = AetherProtocol.GOOL,
+                noise = AetherNoise.BALANCED,
+                scanMode = AetherScanMode.BALANCED,
+                echEnabled = false,
+                httpProxyEnabled = false,
+                h2Mode = true,
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "consumer-masque.cloudflareclient.com",
+                goolClassic = false,
+                noDataCheck = false,
+                tlsGroups = "",
+                mtu = 1240,
+                keepaliveEnabled = true,
+                keepalive = 5,
                 connectionMode = ConnectionMode.TUNNEL
             )
             "gaming" -> base.copy(
@@ -531,7 +553,8 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 h2Fragment = true,
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
-                masqueSni = "",
+                masqueSni = "consumer-masque.cloudflareclient.com",
+                goolClassic = false,
                 noDataCheck = false,
                 tlsGroups = "",
                 mtu = 1240,
@@ -553,7 +576,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 h2Fragment = true,
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
-                masqueSni = "",
+                masqueSni = "consumer-masque.cloudflareclient.com",
                 noDataCheck = false,
                 tlsGroups = "",
                 mtu = 1320,
@@ -570,7 +593,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 h2Fragment = true,
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
-                masqueSni = "",
+                masqueSni = "consumer-masque.cloudflareclient.com",
                 noDataCheck = false,
                 tlsGroups = "",
                 mtu = 1320,
@@ -587,7 +610,8 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 h2Fragment = true,
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
-                masqueSni = "",
+                masqueSni = "consumer-masque.cloudflareclient.com",
+                goolClassic = false,
                 noDataCheck = false,
                 tlsGroups = "",
                 mtu = 1240,
@@ -604,7 +628,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 h2Fragment = true,
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
-                masqueSni = "",
+                masqueSni = "consumer-masque.cloudflareclient.com",
                 noDataCheck = false,
                 tlsGroups = "",
                 mtu = 1280,
@@ -640,6 +664,8 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         settings.putString("${p}wiw_outer", cfg.wiwOuter)
         settings.putString("${p}wiw_inner", cfg.wiwInner)
         settings.putBoolean("${p}wiw_scan", cfg.wiwScan)
+        settings.putBoolean("${p}gool_classic", cfg.goolClassic)
+        settings.putString("${p}masque_sni", cfg.masqueSni)
         settings.putInt("${p}masque_mtu", cfg.masqueMtu.coerceIn(0, 9000))
         settings.putInt("${p}netstack_tcp_rx", cfg.netstackTcpRx.coerceIn(0, 67108864))
         settings.putInt("${p}netstack_tcp_tx", cfg.netstackTcpTx.coerceIn(0, 67108864))
@@ -680,7 +706,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 h2Fragment = true,
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
-                masqueSni = "",
+                masqueSni = "consumer-masque.cloudflareclient.com",
                 noDataCheck = false,
                 quickReconnect = true,
                 peer = "",
@@ -688,6 +714,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 wiwOuter = "",
                 wiwInner = "",
                 wiwScan = true,
+                goolClassic = false,
                 masqueMtu = 0,
                 netstackTcpRx = 0,
                 netstackTcpTx = 0,
@@ -711,7 +738,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 h2Fragment = true,
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
-                masqueSni = "",
+                masqueSni = "consumer-masque.cloudflareclient.com",
                 noDataCheck = false,
                 quickReconnect = true,
                 peer = "",
@@ -719,6 +746,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 wiwOuter = "",
                 wiwInner = "",
                 wiwScan = true,
+                goolClassic = false,
                 masqueMtu = 0,
                 netstackTcpRx = 0,
                 netstackTcpTx = 0,
@@ -742,7 +770,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 h2Fragment = true,
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
-                masqueSni = "",
+                masqueSni = "consumer-masque.cloudflareclient.com",
                 noDataCheck = false,
                 quickReconnect = true,
                 peer = "",
@@ -750,6 +778,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 wiwOuter = "",
                 wiwInner = "",
                 wiwScan = true,
+                goolClassic = false,
                 masqueMtu = 0,
                 netstackTcpRx = 0,
                 netstackTcpTx = 0,
@@ -760,7 +789,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 wgEndpointCooldownSecs = 300,
                 noProfileRetry = false,
                 tlsGroups = "",
-                mtu = 1330
+                mtu = 1240
             )
             AetherProtocol.ZERO_TRUST -> base.copy(
                 protocol = protocol,
@@ -811,6 +840,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             h2Fragment = settings.getBoolean("${p}h2_fragment", false),
             fragmentSize = settings.getString("${p}fragment_size", "16-32"),
             fragmentDelay = settings.getString("${p}fragment_delay", "2-10"),
+            masqueSni = settings.getString("${p}masque_sni", "consumer-masque.cloudflareclient.com").ifBlank { "consumer-masque.cloudflareclient.com" },
             noDataCheck = settings.getBoolean("${p}no_data_check", false),
             quickReconnect = settings.getBoolean("${p}quick_reconnect", true),
             peer = settings.getString("${p}peer", ""),
@@ -818,6 +848,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             wiwOuter = settings.getString("${p}wiw_outer", ""),
             wiwInner = settings.getString("${p}wiw_inner", ""),
             wiwScan = settings.getBoolean("${p}wiw_scan", true),
+            goolClassic = settings.getBoolean("${p}gool_classic", false),
             masqueMtu = settings.getInt("${p}masque_mtu", 0),
             netstackTcpRx = settings.getInt("${p}netstack_tcp_rx", 0),
             netstackTcpTx = settings.getInt("${p}netstack_tcp_tx", 0),
