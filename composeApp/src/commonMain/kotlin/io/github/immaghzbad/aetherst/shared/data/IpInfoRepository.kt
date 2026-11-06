@@ -729,17 +729,16 @@ object IpInfoRepository {
         val countryName = runCatching {
             java.util.Locale("", upperCountry).displayCountry.takeIf { it.isNotBlank() }
         }.getOrNull() ?: upperCountry
+        val displayCountry = if (colo.isNotBlank()) "$countryName ($colo)" else countryName
         _ipInfo.value = current.copy(
             ip = ip.trim(),
-            country = countryName,
+            country = displayCountry,
             countryCode = upperCountry,
             flagEmoji = flag,
-            city = if (colo.isNotBlank()) "Cloudflare $colo" else current.city,
-            isp = "Cloudflare WARP",
             isLoading = false,
             error = null
         )
-        LogRepository.i("Instant exit location updated: ${ip.trim()} ($upperCountry - $countryName)", "IpWhois")
+        LogRepository.i("Instant exit location updated: ${ip.trim()} ($upperCountry - $displayCountry)", "IpWhois")
     }
 
     fun reset() { _ipInfo.value = IpInfo() }
