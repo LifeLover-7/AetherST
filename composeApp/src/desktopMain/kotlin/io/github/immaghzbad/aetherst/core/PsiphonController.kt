@@ -139,7 +139,7 @@ object PsiphonController {
         {
           "PropagationChannelId": "FFFFFFFFFFFFFFFF",
           "SponsorId": "1111111111111111",
-          "EstablishTunnelTimeoutSeconds": 120,
+          "EstablishTunnelTimeoutSeconds": 300,
           "DataRootDirectory": "$safeDir",
           "ClientVersion": "1",
           "TunnelProtocol": "",
@@ -149,7 +149,7 @@ object PsiphonController {
           "ServerEntrySignaturePublicKey": "sHuUVTWaRyh5pZwy4UguSgkwmBe0EHtJJkoF5WrxmvA=",
           "ExchangeObfuscationKey": "DpXzloJk1Hw6aSzmKKky0xcahsEHubch81Mi6K0XMlU=",
           "EmitBytesTransferred": true,
-          "DeviceRegion": "IR",
+
           "ConnectionWorkerPoolSize": 12$safeEgress$safeUpstream
         }
         """.trimIndent()

@@ -411,7 +411,7 @@ class AetherVpnService : VpnService() {
                         mtu = config.mtu.coerceIn(576, 9000),
                         attemptId = attemptId,
                         settings = hevSettings,
-                        udpMode = config.hevUdpMode
+                        udpMode = if (ActiveProxyProvider.psiphonProxyUrl != null || config.chainProvider == ChainProvider.PSIPHON || config.chainProvider == ChainProvider.TOR) "tcp" else config.hevUdpMode
                     ) == true
                     if (!ok) throw IllegalStateException("HEV engine failed to start mtu=${config.mtu}")
                     lastHevUpstream = "$hevHost:$hevPort"

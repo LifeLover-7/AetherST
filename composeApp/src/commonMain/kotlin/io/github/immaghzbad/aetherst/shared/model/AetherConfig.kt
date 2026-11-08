@@ -14,7 +14,8 @@ import java.util.Locale
 enum class AetherProtocol(val rawValue: String, val displayName: String, val description: String) {
     MASQUE("masque", "MASQUE", "HTTP/2/3 Tunneling (MASQUE)"),
     WG("wg", "WireGuard", "Lean speed WireGuard tunnel"),
-    GOOL("gool", "Gool (WG-in-WG)", "Double encryption WireGuard-in-WireGuard"),
+    GOOL("gool", "Gool (Dual WireGuard)", "Double encryption WireGuard / WG-in-MASQUE"),
+    MIM("mim", "MIM (Dual MASQUE)", "Two MASQUE hops for foreign IP exit (Pure TCP/H2)"),
     ZERO_TRUST("zt", "Zero Trust", "Cloudflare for Organizations")
 }
 

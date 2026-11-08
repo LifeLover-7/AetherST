@@ -398,7 +398,7 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
                     val currentProtocol = config.value.protocol
                     val overhead = when (currentProtocol) {
                         AetherProtocol.WG, AetherProtocol.GOOL -> 80
-                        AetherProtocol.MASQUE -> 60
+                        AetherProtocol.MASQUE, AetherProtocol.MIM -> 60
                         else -> 40
                     }
 

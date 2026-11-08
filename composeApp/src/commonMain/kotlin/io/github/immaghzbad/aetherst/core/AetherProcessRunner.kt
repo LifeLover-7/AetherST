@@ -85,6 +85,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 AetherProtocol.MASQUE -> command.add("--masque")
                 AetherProtocol.WG -> command.add("--wg")
                 AetherProtocol.GOOL -> command.add("--gool")
+                AetherProtocol.MIM -> command.add("--mim")
                 AetherProtocol.ZERO_TRUST -> {}
             }
 
@@ -138,7 +139,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 else -> "--dual"
             })
 
-            val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.ZERO_TRUST || (config.protocol == AetherProtocol.GOOL && !config.goolClassic) || config.mimEnabled
+            val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.MIM || config.protocol == AetherProtocol.ZERO_TRUST || (config.protocol == AetherProtocol.GOOL && !config.goolClassic) || config.mimEnabled
             if (isMasqueBased) {
                 if (config.h2Mode) command.add("--h2")
                 if (config.echEnabled) {
@@ -166,8 +167,11 @@ class AetherProcessRunner(private val context: PlatformContext) {
             }
 
 
-            if (config.mimEnabled) {
-                command.add("--mim")
+            val mimActive = config.protocol == AetherProtocol.MIM || config.mimEnabled
+            if (mimActive) {
+                if (config.protocol != AetherProtocol.MIM) {
+                    command.add("--mim")
+                }
                 if (config.mimOuter.isNotBlank()) {
                     command.add("--mim-outer")
                     command.add(config.mimOuter.trim())
@@ -175,6 +179,9 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 if (config.mimInner.isNotBlank()) {
                     command.add("--mim-inner")
                     command.add(config.mimInner.trim())
+                }
+                if (config.mimScan) {
+                    command.add("--mim-scan")
                 }
             }
 
@@ -413,7 +420,7 @@ class AetherProcessRunner(private val context: PlatformContext) {
                 updateState(ConnectionStatus.STARTING, attemptId)
             }
             lower.contains("validating") -> updateState(ConnectionStatus.VALIDATING, attemptId)
-            (protocol == AetherProtocol.MASQUE && (lower.contains("tunnel validated") || lower.contains("connect-ip status: 200") || (lower.contains("exit location") && lower.contains("accepted")) || (lower.contains("socks") && lower.contains("listening")))) ||
+            ((protocol == AetherProtocol.MASQUE || protocol == AetherProtocol.MIM) && (lower.contains("tunnel validated") || lower.contains("connect-ip status: 200") || (lower.contains("exit location") && lower.contains("accepted")) || (lower.contains("socks") && lower.contains("listening")) || lower.contains("masque-in-masque ready") || lower.contains("mim ready") || lower.contains("mim exit:"))) ||
             (protocol == AetherProtocol.ZERO_TRUST && (lower.contains("tunnel validated") || lower.contains("connect-ip status: 200") || lower.contains("handshake complete") || (lower.contains("socks") && lower.contains("listening")))) ||
             (protocol == AetherProtocol.WG && (lower.contains("wireguard tunnel validated") || lower.contains("handshake complete") || lower.contains("tunnel validated") || (lower.contains("socks") && lower.contains("listening")))) -> {
                 updateState(ConnectionStatus.RUNNING, attemptId)

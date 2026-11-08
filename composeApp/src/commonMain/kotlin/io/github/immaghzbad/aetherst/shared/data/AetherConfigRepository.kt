@@ -496,7 +496,8 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         }
         val targetProtocol = when (presetId) {
             "turbo", "thorough", "mci" -> AetherProtocol.MASQUE
-            "stealth", "gaming", "irancell" -> AetherProtocol.GOOL
+            "gaming", "irancell" -> AetherProtocol.GOOL
+            "stealth" -> AetherProtocol.MIM
             "ironclad" -> AetherProtocol.WG
             else -> return
         }
@@ -519,7 +520,8 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 masqueSni = "consumer-masque.cloudflareclient.com",
                 noDataCheck = false,
                 tlsGroups = "",
-                mtu = 1280,
+                mtu = 1240,
+                validateSecs = 15,
                 connectionMode = ConnectionMode.TUNNEL
             )
             "irancell" -> base.copy(
@@ -601,8 +603,8 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             )
             "stealth" -> base.copy(
                 presetId = "stealth",
-                protocol = AetherProtocol.GOOL,
-                noise = AetherNoise.BALANCED,
+                protocol = AetherProtocol.MIM,
+                noise = AetherNoise.FIREWALL,
                 scanMode = AetherScanMode.STEALTH,
                 echEnabled = false,
                 httpProxyEnabled = false,
@@ -611,10 +613,12 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 fragmentSize = "30-60",
                 fragmentDelay = "5-15",
                 masqueSni = "consumer-masque.cloudflareclient.com",
-                goolClassic = false,
+                mimEnabled = true,
+                mimScan = true,
                 noDataCheck = false,
                 tlsGroups = "",
                 mtu = 1240,
+                validateSecs = 15,
                 connectionMode = ConnectionMode.TUNNEL
             )
             "ironclad" -> base.copy(
@@ -785,6 +789,42 @@ class AetherConfigRepository private constructor(private val settings: Settings)
                 keepaliveEnabled = true,
                 keepalive = 5,
                 validateSecs = 10,
+                reconnectSecs = 2,
+                wgEndpointCooldownSecs = 300,
+                noProfileRetry = false,
+                tlsGroups = "",
+                mtu = 1240
+            )
+            AetherProtocol.MIM -> base.copy(
+                protocol = protocol,
+                noise = AetherNoise.FIREWALL,
+                scanMode = AetherScanMode.TURBO,
+                ipMode = AetherIpMode.IPV4,
+                echEnabled = false,
+                httpProxyEnabled = false,
+                h2Mode = true,
+                h2Fragment = true,
+                fragmentSize = "30-60",
+                fragmentDelay = "5-15",
+                masqueSni = "consumer-masque.cloudflareclient.com",
+                noDataCheck = false,
+                quickReconnect = true,
+                peer = "",
+                wgPeer = "",
+                wiwOuter = "",
+                wiwInner = "",
+                wiwScan = true,
+                goolClassic = false,
+                mimEnabled = true,
+                mimOuter = "",
+                mimInner = "",
+                mimScan = true,
+                masqueMtu = 0,
+                netstackTcpRx = 0,
+                netstackTcpTx = 0,
+                keepaliveEnabled = true,
+                keepalive = 5,
+                validateSecs = 15,
                 reconnectSecs = 2,
                 wgEndpointCooldownSecs = 300,
                 noProfileRetry = false,

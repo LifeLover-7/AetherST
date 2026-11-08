@@ -137,6 +137,7 @@ class AetherProcessRunner(private val context: Context) {
                 AetherProtocol.MASQUE -> commandList.add("--masque")
                 AetherProtocol.WG -> commandList.add("--wg")
                 AetherProtocol.GOOL -> commandList.add("--gool")
+                AetherProtocol.MIM -> commandList.add("--mim")
                 AetherProtocol.ZERO_TRUST -> {}
             }
 
@@ -164,7 +165,7 @@ class AetherProcessRunner(private val context: Context) {
                 }
             )
 
-            val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.ZERO_TRUST || (config.protocol == AetherProtocol.GOOL && !config.goolClassic) || config.mimEnabled
+            val isMasqueBased = config.protocol == AetherProtocol.MASQUE || config.protocol == AetherProtocol.MIM || config.protocol == AetherProtocol.ZERO_TRUST || (config.protocol == AetherProtocol.GOOL && !config.goolClassic) || config.mimEnabled
             if (isMasqueBased) {
                 if (config.h2Mode) commandList.add("--h2")
                 if (config.echEnabled) {
@@ -332,10 +333,12 @@ class AetherProcessRunner(private val context: Context) {
                 }
             }
 
-            val mimActive = config.protocol == AetherProtocol.MASQUE && config.mimEnabled
+            val mimActive = config.protocol == AetherProtocol.MIM || config.mimEnabled
             val hasMimManual = config.mimOuter.isNotBlank() || config.mimInner.isNotBlank()
             if (mimActive) {
-                commandList.add("--mim")
+                if (config.protocol != AetherProtocol.MIM) {
+                    commandList.add("--mim")
+                }
                 if (config.mimOuter.isNotBlank()) {
                     commandList.add("--mim-outer")
                     commandList.add(config.mimOuter.trim())

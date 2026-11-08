@@ -1279,6 +1279,15 @@ private fun buildResultForProtocol(protocol: AetherProtocol, base: AutoDetectRes
             recommendedFragment = false,
             recommendedNoDataCheck = true
         )
+        AetherProtocol.MIM -> base.copy(
+            recommendedProtocol = protocol,
+            recommendedNoise = if (isDPI) AetherNoise.GFW else AetherNoise.FIREWALL,
+            recommendedScanMode = if (isDPI) AetherScanMode.BALANCED else AetherScanMode.TURBO,
+            recommendedH2Mode = true,
+            recommendedEch = false,
+            recommendedFragment = true,
+            recommendedNoDataCheck = false
+        )
         AetherProtocol.ZERO_TRUST -> base.copy(
             recommendedProtocol = protocol,
             recommendedNoise = AetherNoise.OFF,

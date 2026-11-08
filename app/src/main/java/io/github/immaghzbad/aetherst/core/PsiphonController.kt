@@ -129,7 +129,7 @@ object PsiphonController {
             json.put("PropagationChannelId", "FFFFFFFFFFFFFFFF")
             json.put("SponsorId", "1111111111111111")
             json.put("EgressRegion", egressRegion)
-            json.put("EstablishTunnelTimeoutSeconds", 120)
+            json.put("EstablishTunnelTimeoutSeconds", 300)
             json.put("DataRootDirectory", dir.absolutePath)
             json.put("ClientVersion", "1")
             json.put("TunnelProtocol", "")
@@ -140,7 +140,7 @@ object PsiphonController {
             json.put("ServerEntrySignaturePublicKey", "sHuUVTWaRyh5pZwy4UguSgkwmBe0EHtJJkoF5WrxmvA=")
             json.put("ExchangeObfuscationKey", "DpXzloJk1Hw6aSzmKKky0xcahsEHubch81Mi6K0XMlU=")
             json.put("EmitBytesTransferred", true)
-            json.put("DeviceRegion", "IR")
+            // DeviceRegion omitted to prevent region restriction
             json.put("ConnectionWorkerPoolSize", 12)
             json.toString()
         } catch (_: Exception) {

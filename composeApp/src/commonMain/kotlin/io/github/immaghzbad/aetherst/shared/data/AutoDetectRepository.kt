@@ -441,6 +441,7 @@ object AutoDetectRepository {
                     AetherProtocol.MASQUE -> probeMasque(context)
                     AetherProtocol.WG -> probeWireGuard(context)
                     AetherProtocol.GOOL -> probeGool(context)
+                    AetherProtocol.MIM -> probeMasque(context)
                     AetherProtocol.ZERO_TRUST -> ProtocolProbeResult(protocol, ProbeStatus.SKIPPED, -1, "Zero Trust requires manual configuration")
                 }
             } catch (e: CancellationException) { throw e } catch (e: Exception) {
@@ -564,7 +565,7 @@ object AutoDetectRepository {
     private suspend fun probeNoiseModes(protocolResults: List<ProtocolProbeResult>): List<NoiseProbeResult> {
         val bestProtocol = protocolResults.filter { it.status == ProbeStatus.SUCCESS }.minByOrNull { it.latencyMs }?.protocol ?: AetherProtocol.MASQUE
         val noiseModes = when (bestProtocol) {
-            AetherProtocol.MASQUE -> listOf(AetherNoise.FIREWALL, AetherNoise.GFW, AetherNoise.OFF)
+            AetherProtocol.MASQUE, AetherProtocol.MIM -> listOf(AetherNoise.FIREWALL, AetherNoise.GFW, AetherNoise.OFF)
             else -> listOf(AetherNoise.BALANCED, AetherNoise.AGGRESSIVE, AetherNoise.LIGHT, AetherNoise.OFF)
         }
         return noiseModes.mapIndexed { idx, noise ->

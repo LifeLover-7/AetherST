@@ -143,7 +143,7 @@ actual object ConnectionController {
                     mtu = effectiveConfig.mtu.coerceIn(1120, 1280),
                     validateSecs = effectiveConfig.validateSecs.coerceAtLeast(15)
                 )
-            } else if (effectiveConfig.protocol == AetherProtocol.MASQUE) {
+            } else if (effectiveConfig.protocol == AetherProtocol.MASQUE || effectiveConfig.protocol == AetherProtocol.MIM) {
                 if (effectiveConfig.masqueSni.isBlank()) {
                     effectiveConfig = effectiveConfig.copy(masqueSni = "consumer-masque.cloudflareclient.com")
                 }
