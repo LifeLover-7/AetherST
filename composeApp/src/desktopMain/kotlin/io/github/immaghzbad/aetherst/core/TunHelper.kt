@@ -60,7 +60,7 @@ object TunHelper {
             } else {
                 arrayOf(
                     "powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-                    "Start-Process -FilePath 'pwsh' -WindowStyle Hidden -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','${helperScript.absolutePath}','-AppPid','$appPid'"
+                    "Start-Process -FilePath 'powershell' -WindowStyle Hidden -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','${helperScript.absolutePath}','-AppPid','$appPid'"
                 )
             }
             ProcessBuilder(*command).redirectErrorStream(true).start()
@@ -75,15 +75,31 @@ object TunHelper {
 
     fun stop() {
         if (!isRunning.getAndSet(false)) return
+        val context = PlatformContext()
+        val dataDir = File(getSystemUtils(context).getFilesDir())
         try {
-            val context = PlatformContext()
-            val dataDir = getSystemUtils(context).getFilesDir()
             File(dataDir, STOP_FLAG).writeText("stop")
-            LogRepository.i("[Tun] Stop flag written; helper cleaning up")
+            LogRepository.i("[Tun] Stop flag written; executing cleanup")
         } catch (_: Exception) {}
 
         Thread {
             try {
+                writeCleanupScript(dataDir)
+                val cleanupScript = File(dataDir, "tun-cleanup.ps1")
+                if (cleanupScript.exists()) {
+                    val command = if (Elevation.isElevated()) {
+                        arrayOf(
+                            "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden",
+                            "-File", cleanupScript.absolutePath
+                        )
+                    } else {
+                        arrayOf(
+                            "powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+                            "Start-Process -FilePath 'powershell' -WindowStyle Hidden -Verb RunAs -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','${cleanupScript.absolutePath}'"
+                        )
+                    }
+                    ProcessBuilder(*command).redirectErrorStream(true).start().waitFor(8, java.util.concurrent.TimeUnit.SECONDS)
+                }
                 if (System.getProperty("os.name").lowercase().contains("win")) {
                     ProcessBuilder("taskkill", "/F", "/T", "/IM", "hev-socks5-tunnel.exe")
                         .redirectErrorStream(true).start()
@@ -117,7 +133,7 @@ object TunHelper {
             |  cache-size: 10000
             |misc:
             |  log-file: '$logFile'
-            |  log-level: info
+            |  log-level: warn
             |  connect-timeout: 5000
             |  read-write-timeout: 60000
             |""".trimMargin()
@@ -262,46 +278,71 @@ object TunHelper {
             |${'$'}gw = (Get-NetRoute -DestinationPrefix '0.0.0.0/0' -ErrorAction SilentlyContinue | Where-Object { ${'$'}_.InterfaceAlias -ne ${'$'}params.tunName -and ${'$'}_.NextHop -ne '0.0.0.0' } | Sort-Object RouteMetric | Select-Object -First 1).NextHop
             |if (-not ${'$'}gw) { ${'$'}gw = (Get-NetIPConfiguration | Where-Object { ${'$'}_.NetAdapter.Status -eq 'Up' -and ${'$'}_.IPv4DefaultGateway -ne ${'$'}null } | Select-Object -First 1).IPv4DefaultGateway.NextHop }
             |L "physical gateway ${'$'}gw"
-            |while (${'$'}true) {
-            |    Start-Sleep -Seconds 2
-            |    ${'$'}params = Get-Content (Join-Path ${'$'}data '$PARAMS_FILE') -Raw | ConvertFrom-Json
-            |    foreach (${'$'}ip in ${'$'}params.endpointIps) {
-            |        if (${'$'}ip -and ${'$'}gw) { route add ${'$'}ip mask 255.255.255.255 ${'$'}gw metric 1 2>&1 | Out-Null }
-            |    }
-            |    ${'$'}appDead = ${'$'}false
-            |    if (${'$'}AppPid -gt 0) { ${'$'}appDead = -not (Get-Process -Id ${'$'}AppPid -ErrorAction SilentlyContinue) }
-            |    ${'$'}hevDead = -not (Get-Process -Id ${'$'}hev.Id -ErrorAction SilentlyContinue)
-            |    if (${'$'}appDead -or ${'$'}hevDead -or (Test-Path ${'$'}stopFile)) { break }
-            |    if (-not (Test-TunRoutes)) {
-            |        L "routes missing - re-adding"
-            |        ${'$'}line = netsh interface ipv4 show interfaces | Select-String ${'$'}params.tunName
-            |        if (${'$'}line) { ${'$'}toks = ${'$'}line.ToString().Trim() -split '\s+'; if (${'$'}toks.Count -ge 2) { Add-TunRoutes ${'$'}toks[0] } }
-            |    }
+            |foreach (${'$'}ip in ${'$'}params.endpointIps) {
+            |    if (${'$'}ip -and ${'$'}gw) { route add ${'$'}ip mask 255.255.255.255 ${'$'}gw metric 1 2>&1 | Out-Null }
             |}
-            |# پاک‌سازی کامل هنگام قطع اتصال
+            |${'$'}state = @{
+            |    ifIndex = "${'$'}ifIndex"
+            |    tunIp = "${'$'}(${'$'}params.tunIp)"
+            |    gw = "${'$'}gw"
+            |    hevPid = ${'$'}hev.Id
+            |    endpointIps = @(${'$'}params.endpointIps)
+            |}
+            |${'$'}state | ConvertTo-Json | Out-File (Join-Path ${'$'}data 'tun-state.json') -Encoding utf8
+            |L "TUN setup complete. PowerShell exiting to save RAM."
+            |exit 0
+            |""".trimMargin()
+        File(dataDir, "tun-helper.ps1").writeText(script)
+    }
+
+    private fun writeCleanupScript(dataDir: File) {
+        val dataPath = dataDir.absolutePath
+        val escapedData = dataPath.replace("'", "''")
+        val script = """
+            |${'$'}ErrorActionPreference = 'SilentlyContinue'
+            |${'$'}data = '$escapedData'
+            |${'$'}logFile = Join-Path ${'$'}data '$HELPER_LOG'
+            |function L(${'$'}m) { "${'$'}(Get-Date -Format 'HH:mm:ss') ${'$'}m" | Out-File ${'$'}logFile -Append }
+            |L "helper cleanup started"
             |try { Remove-NetFirewallRule -DisplayName 'AetherST_Block_IPv6' -ErrorAction SilentlyContinue | Out-Null } catch {}
-            |# پاک‌سازی قوانین split tunneling
             |try { Get-NetFirewallRule -DisplayName "AetherST_Split_*" -ErrorAction SilentlyContinue | Remove-NetFirewallRule -ErrorAction SilentlyContinue } catch {}
             |L "Split tunneling firewall rules cleaned up"
             |try { Clear-DnsClientCache -ErrorAction SilentlyContinue | Out-Null } catch {}
             |try { Get-NetAdapter | Where-Object { ${'$'}_.Status -eq 'Up' } | ForEach-Object { Set-DnsClientServerAddress -InterfaceIndex ${'$'}_.InterfaceIndex -ResetServerAddresses -ErrorAction SilentlyContinue } } catch {}
-            |route delete 0.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
-            |route delete 128.0.0.0 mask 128.0.0.0 ${'$'}params.tunIp metric 1 if ${'$'}ifIndex 2>&1 | Out-Null
-            |foreach (${'$'}ip in ${'$'}params.endpointIps) {
-            |    if (${'$'}ip -and ${'$'}gw) { route delete ${'$'}ip mask 255.255.255.255 ${'$'}gw 2>&1 | Out-Null }
+            |${'$'}stateFile = Join-Path ${'$'}data 'tun-state.json'
+            |if (Test-Path ${'$'}stateFile) {
+            |    try {
+            |        ${'$'}state = Get-Content ${'$'}stateFile -Raw | ConvertFrom-Json
+            |        if (${'$'}state.ifIndex -and ${'$'}state.tunIp) {
+            |            route delete 0.0.0.0 mask 128.0.0.0 ${'$'}state.tunIp metric 1 if ${'$'}state.ifIndex 2>&1 | Out-Null
+            |            route delete 128.0.0.0 mask 128.0.0.0 ${'$'}state.tunIp metric 1 if ${'$'}state.ifIndex 2>&1 | Out-Null
+            |        }
+            |        if (${'$'}state.endpointIps -and ${'$'}state.gw) {
+            |            foreach (${'$'}ip in ${'$'}state.endpointIps) {
+            |                if (${'$'}ip) { route delete ${'$'}ip mask 255.255.255.255 ${'$'}state.gw 2>&1 | Out-Null }
+            |            }
+            |        }
+            |        if (${'$'}state.hevPid) {
+            |            Stop-Process -Id ${'$'}state.hevPid -Force -ErrorAction SilentlyContinue
+            |        }
+            |    } catch {}
+            |    Remove-Item ${'$'}stateFile -ErrorAction SilentlyContinue
             |}
-            |if (Get-Process -Id ${'$'}hev.Id -ErrorAction SilentlyContinue) { Stop-Process -Id ${'$'}hev.Id -Force }
-            |Remove-Item ${'$'}stopFile -ErrorAction SilentlyContinue
+            |route delete 0.0.0.0 mask 128.0.0.0 $TUN_IPV4 2>&1 | Out-Null
+            |route delete 128.0.0.0 mask 128.0.0.0 $TUN_IPV4 2>&1 | Out-Null
+            |Get-Process -Name 'hev-socks5-tunnel' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+            |Remove-Item (Join-Path ${'$'}data '$STOP_FLAG') -ErrorAction SilentlyContinue
             |L "helper cleanup done"
             |exit 0
             |""".trimMargin()
-        File(dataDir, "tun-helper.ps1").writeText(script)
+        File(dataDir, "tun-cleanup.ps1").writeText(script)
     }
 
     private fun startTailing(dataDir: File) {
         tailThread = Thread {
             val helperFile = File(dataDir, HELPER_LOG)
             var helperOffset = 0L
+            var checkCounter = 0
             while (isRunning.get()) {
                 try {
                     if (helperFile.exists()) {
@@ -316,6 +357,15 @@ object TunHelper {
                                     LogRepository.i("[Tun] $it")
                                 }
                             }
+                        }
+                    }
+                    checkCounter++
+                    if (checkCounter % 5 == 0) {
+                        val isHevAlive = ProcessHandle.allProcesses().anyMatch {
+                            it.info().command().map { c -> c.contains("hev-socks5-tunnel", ignoreCase = true) }.orElse(false)
+                        }
+                        if (!isHevAlive && isRunning.get()) {
+                            LogRepository.w("[Tun] hev-socks5-tunnel process exited unexpectedly")
                         }
                     }
                 } catch (_: Exception) {}

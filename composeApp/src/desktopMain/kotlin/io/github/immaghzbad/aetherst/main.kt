@@ -422,6 +422,22 @@ fun main(args: Array<String> = emptyArray()) {
                 try { windowState.isMinimized = false } catch (e: Exception) {
                     try { io.github.immaghzbad.aetherst.shared.desktop.DesktopLogger.e("Main", "Failed to unminimize on isVisible change: ${e.message}") } catch (_: Throwable) {}
                 }
+            } else {
+                // When hidden to tray, release unused Compose / Skiko UI and rendering memory back to OS
+                try {
+                    System.gc()
+                } catch (_: Throwable) {}
+            }
+        }
+
+        LaunchedEffect(Unit) {
+            while (true) {
+                kotlinx.coroutines.delay(60_000)
+                if (!isVisible || windowState.isMinimized) {
+                    try {
+                        System.gc()
+                    } catch (_: Throwable) {}
+                }
             }
         }
 

@@ -114,6 +114,28 @@ tasks.named<ProcessResources>("desktopProcessResources") {
 compose.desktop {
     application {
         mainClass = "io.github.immaghzbad.aetherst.MainKt"
+        jvmArgs += listOf(
+            "-Xms24m",
+            "-Xmx96m",
+            "-Xss512k",
+            "-XX:InitialCodeCacheSize=16m",
+            "-XX:ReservedCodeCacheSize=48m",
+            "-XX:MetaspaceSize=32m",
+            "-XX:MaxMetaspaceSize=80m",
+            "-XX:CompressedClassSpaceSize=64m",
+            "-XX:+UseG1GC",
+            "-XX:MaxGCPauseMillis=20",
+            "-XX:G1PeriodicGCInterval=5000",
+            "-XX:G1PeriodicGCSystemLoadThreshold=0",
+            "-XX:+ExplicitGCInvokesConcurrent",
+            "-XX:MinHeapFreeRatio=10",
+            "-XX:MaxHeapFreeRatio=20",
+            "-XX:+UseStringDeduplication",
+            "-Dsun.java2d.opengl=false",
+            "-Dsun.java2d.d3d=true",
+            "-Dskiko.vsync=true",
+            "-Dskiko.fps=60"
+        )
         nativeDistributions {
             targetFormats(org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi, org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe)
             packageName = "AetherST-Tunnel"
