@@ -425,20 +425,13 @@ fun main(args: Array<String> = emptyArray()) {
             } else {
                 // When hidden to tray, release unused Compose / Skiko UI and rendering memory back to OS
                 try {
-                    System.gc()
+                    io.github.immaghzbad.aetherst.desktop.WindowsMemoryTrimmer.trim()
                 } catch (_: Throwable) {}
             }
         }
 
         LaunchedEffect(Unit) {
-            while (true) {
-                kotlinx.coroutines.delay(60_000)
-                if (!isVisible || windowState.isMinimized) {
-                    try {
-                        System.gc()
-                    } catch (_: Throwable) {}
-                }
-            }
+            io.github.immaghzbad.aetherst.desktop.WindowsMemoryTrimmer.startPeriodicTrimmer()
         }
 
         LaunchedEffect(Unit) {

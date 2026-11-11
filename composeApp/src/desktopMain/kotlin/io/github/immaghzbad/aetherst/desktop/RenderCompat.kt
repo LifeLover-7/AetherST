@@ -175,26 +175,25 @@ object RenderCompat {
     private data class DriverDate(val year: Int)
 
     private fun enumerateGpus(): List<GpuAdapter> {
+        val wmic = runCommand(
+            listOf("wmic", "path", "Win32_VideoController", "get", "Name,DriverDate,DriverVersion", "/value"),
+            5
+        )
+        if (wmic.isNotEmpty()) {
+            val parsed = parseWmic(wmic)
+            if (parsed.isNotEmpty()) return parsed
+        }
         val cim = runCommand(
             listOf(
                 "powershell", "-NoProfile", "-NonInteractive", "-Command",
                 "Get-CimInstance -ClassName Win32_VideoController | Select-Object -Property Name,DriverVersion,DriverDate | ConvertTo-Csv -NoTypeInformation"
             ),
-            10
+            6
         )
         if (cim.isNotEmpty()) {
-            val parsed = parsePowershell(cim)
-            if (parsed.isNotEmpty()) return parsed
-            log("CIM returned data but parse produced no adapters -> trying WMIC as secondary source")
-        } else {
-            log("PowerShell/CIM unavailable -> trying WMIC as secondary source")
+            return parsePowershell(cim)
         }
-        val wmic = runCommand(
-            listOf("wmic", "path", "Win32_VideoController", "get", "Name,DriverDate,DriverVersion", "/value"),
-            8
-        )
-        if (wmic.isEmpty()) return emptyList()
-        return parseWmic(wmic)
+        return emptyList()
     }
 
     private fun parseWmic(lines: List<String>): List<GpuAdapter> {

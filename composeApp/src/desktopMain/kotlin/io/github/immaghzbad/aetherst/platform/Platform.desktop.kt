@@ -485,28 +485,31 @@ actual fun AppIcon(app: AppInfo, modifier: Modifier) {
 }
 
 private fun resolveLnkTarget(lnkPath: String): String? = runCatching {
-    val process = ProcessBuilder(
-        "powershell", "-NoProfile", "-Command",
-        "(New-Object -ComObject WScript.Shell).CreateShortcut('$lnkPath').TargetPath"
-    ).start()
-    val result = process.inputStream.bufferedReader().readText().trim()
-    process.waitFor()
-    if (result.isNotEmpty() && File(result).exists()) result else null
+    val file = File(lnkPath)
+    if (!file.exists()) return null
+    val bytes = file.readBytes()
+    val text = String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+    val match = Regex("([a-zA-Z]:\\\\[^<>:\"/\\\\|?*\\u0000-\\u001F]+\\.exe)", RegexOption.IGNORE_CASE).find(text)
+    if (match != null && File(match.value).exists()) {
+        return match.value
+    }
+    null
 }.getOrNull()
 
 private fun extractExeIcon(exePath: String): androidx.compose.ui.graphics.ImageBitmap? = runCatching {
-    val safeName = "icon_" + exePath.hashCode().toString().replace("-", "N") + "_" + File(exePath).nameWithoutExtension.take(16) + ".png"
-    val tempIcon = File(System.getenv("TEMP") ?: System.getProperty("java.io.tmpdir"), safeName)
-    val psExe = exePath.replace("'", "''")
-    val tempPath = tempIcon.absolutePath.replace("'", "''")
-    val process = ProcessBuilder(
-        "powershell", "-NoProfile", "-Command",
-        "try { [System.Drawing.Icon]::ExtractAssociatedIcon('$psExe').ToBitmap().Save('$tempPath') } catch {}"
-    ).start()
-    process.waitFor(4, java.util.concurrent.TimeUnit.SECONDS)
-    if (tempIcon.exists() && tempIcon.length() > 0) {
-        val bytes = tempIcon.readBytes()
-        runCatching { tempIcon.delete() }
-        org.jetbrains.skia.Image.makeFromEncoded(bytes).toComposeImageBitmap()
-    } else null
+    val file = File(exePath)
+    if (!file.exists()) return null
+    val icon = javax.swing.filechooser.FileSystemView.getFileSystemView().getSystemIcon(file) ?: return null
+    val w = icon.iconWidth.coerceAtLeast(1)
+    val h = icon.iconHeight.coerceAtLeast(1)
+    val bufferedImage = java.awt.image.BufferedImage(w, h, java.awt.image.BufferedImage.TYPE_INT_ARGB)
+    val g = bufferedImage.createGraphics()
+    try {
+        icon.paintIcon(null, g, 0, 0)
+    } finally {
+        g.dispose()
+    }
+    val baos = java.io.ByteArrayOutputStream()
+    javax.imageio.ImageIO.write(bufferedImage, "png", baos)
+    org.jetbrains.skia.Image.makeFromEncoded(baos.toByteArray()).toComposeImageBitmap()
 }.getOrNull()

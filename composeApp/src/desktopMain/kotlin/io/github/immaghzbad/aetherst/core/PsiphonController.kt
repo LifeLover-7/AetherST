@@ -68,6 +68,8 @@ object PsiphonController {
             val logFile = File(psiphonDir, "psiphon.log")
             val pb = ProcessBuilder(command)
             pb.directory(psiphonDir)
+            pb.environment()["GOMEMLIMIT"] = "32MiB"
+            pb.environment()["GOGC"] = "50"
             pb.redirectErrorStream(true)
 
             val proc = pb.start()

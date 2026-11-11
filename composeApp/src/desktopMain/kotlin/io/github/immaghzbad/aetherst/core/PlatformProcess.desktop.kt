@@ -18,6 +18,8 @@ actual class PlatformProcess actual constructor() {
             val pb = ProcessBuilder(command)
             pb.directory(java.io.File(directory))
             pb.environment().putAll(env)
+            pb.environment()["GOMEMLIMIT"] = "32MiB"
+            pb.environment()["GOGC"] = "50"
             pb.redirectErrorStream(true)
             val proc = pb.start()
             process = proc
