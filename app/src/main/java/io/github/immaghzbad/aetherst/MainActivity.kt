@@ -80,6 +80,10 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
+        val savedTheme = io.github.immaghzbad.aetherst.platform.getSettings(io.github.immaghzbad.aetherst.platform.PlatformContext(this)).getString("app_theme_pref", "")
+        if (savedTheme.isNotBlank()) {
+            io.github.immaghzbad.aetherst.shared.ui.theme.AppPalette.currentTheme = savedTheme
+        }
         setContent {
             App(PlatformContext(this))
         }

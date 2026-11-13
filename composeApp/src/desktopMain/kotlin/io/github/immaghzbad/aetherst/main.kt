@@ -213,6 +213,41 @@ fun main(args: Array<String> = emptyArray()) {
     try { System.err.println("[BOOT] Entering Compose application block") } catch (_: Throwable) {}
     try { io.github.immaghzbad.aetherst.shared.desktop.DesktopLogger.i("Main", "Entering Compose application block") } catch (_: Throwable) {}
     try {
+        val desktopContext = PlatformContext()
+        val desktopSettings = getSettings(desktopContext)
+        val savedTheme = desktopSettings.getString("app_theme_pref", "")
+        if (savedTheme.isNotBlank()) {
+            io.github.immaghzbad.aetherst.shared.ui.theme.AppPalette.currentTheme = savedTheme
+        }
+    } catch (_: Throwable) {}
+
+    io.github.immaghzbad.aetherst.shared.platform.Bridge.pickFile = { onResult ->
+        SwingUtilities.invokeLater {
+            try {
+                val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Select WireGuard Config (.conf)", java.awt.FileDialog.LOAD)
+                dialog.filenameFilter = java.io.FilenameFilter { _, name ->
+                    name.endsWith(".conf", ignoreCase = true) || name.endsWith(".txt", ignoreCase = true)
+                }
+                dialog.isVisible = true
+                val dir = dialog.directory
+                val file = dialog.file
+                if (dir != null && file != null) {
+                    val selectedFile = File(dir, file)
+                    if (selectedFile.exists() && selectedFile.canRead()) {
+                        onResult(selectedFile.readText())
+                    } else {
+                        onResult(null)
+                    }
+                } else {
+                    onResult(null)
+                }
+            } catch (_: Throwable) {
+                onResult(null)
+            }
+        }
+    }
+
+    try {
     application {
         val viewModelStoreOwner = remember {
             object : ViewModelStoreOwner {

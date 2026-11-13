@@ -262,12 +262,18 @@ actual object ConnectionController {
                         primarySocksPort = coreSocksPort,
                         localListenPort = 10805
                     )
-                    tunnel.start()
-                    wgExitTunnel = tunnel
-                    effectiveTargetPort = 10805
-                    LogRepository.i("[Controller] Custom WireGuard Exit ready on port 10805", "WireGuard")
+                    val started = runCatching { tunnel.start() }.getOrDefault(false)
+                    if (started) {
+                        wgExitTunnel = tunnel
+                        effectiveTargetPort = 10805
+                        LogRepository.i("[Controller] Custom WireGuard Exit ready on port 10805", "WireGuard")
+                    } else {
+                        LogRepository.w("[Controller] Custom WireGuard start failed, falling back to core port $coreSocksPort", "WireGuard")
+                        effectiveTargetPort = coreSocksPort
+                    }
                 } else {
                     LogRepository.w("[Controller] Custom WireGuard config invalid, falling back to core port $coreSocksPort", "WireGuard")
+                    effectiveTargetPort = coreSocksPort
                 }
             } else if (effectiveConfig.exitNodeMode == ExitNodeMode.CUSTOM_SOCKS5 && effectiveConfig.customSocks5Host.isNotBlank()) {
                 val relay = io.github.immaghzbad.aetherst.shared.net.CustomSocks5Relay(
@@ -279,10 +285,15 @@ actual object ConnectionController {
                     username = effectiveConfig.customSocks5Username,
                     password = effectiveConfig.customSocks5Password
                 )
-                relay.start()
-                customSocksRelay = relay
-                effectiveTargetPort = 10806
-                LogRepository.i("[Controller] Custom SOCKS5 Exit ready on port 10806", "SOCKS5")
+                val started = runCatching { relay.start() }.getOrDefault(false)
+                if (started) {
+                    customSocksRelay = relay
+                    effectiveTargetPort = 10806
+                    LogRepository.i("[Controller] Custom SOCKS5 Exit ready on port 10806", "SOCKS5")
+                } else {
+                    LogRepository.w("[Controller] Custom SOCKS5 start failed, falling back to core port $coreSocksPort", "SOCKS5")
+                    effectiveTargetPort = coreSocksPort
+                }
             }
 
             currentCoroutineContext().ensureActive()

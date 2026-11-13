@@ -860,8 +860,14 @@ class AetherVpnService : VpnService() {
                             primarySocksPort = primaryPort,
                             localListenPort = localPort
                         )
-                        tunnel.start()
-                        wgExitTunnel = tunnel
+                        val started = runCatching { tunnel.start() }.getOrDefault(false)
+                        if (started) {
+                            wgExitTunnel = tunnel
+                            return "127.0.0.1" to localPort
+                        } else {
+                            LogRepository.w("[VpnService] Custom WG start failed, falling back to direct primary socks")
+                            return "127.0.0.1" to (config.socksPort.toIntOrNull() ?: 1819)
+                        }
                     }
                     return "127.0.0.1" to localPort
                 } else {
@@ -883,8 +889,14 @@ class AetherVpnService : VpnService() {
                             username = config.customSocks5Username,
                             password = config.customSocks5Password
                         )
-                        relay.start()
-                        customSocksRelay = relay
+                        val started = runCatching { relay.start() }.getOrDefault(false)
+                        if (started) {
+                            customSocksRelay = relay
+                            return "127.0.0.1" to localPort
+                        } else {
+                            LogRepository.w("[VpnService] Custom SOCKS5 start failed, falling back to direct primary socks")
+                            return "127.0.0.1" to (config.socksPort.toIntOrNull() ?: 1819)
+                        }
                     }
                     return "127.0.0.1" to localPort
                 } else {

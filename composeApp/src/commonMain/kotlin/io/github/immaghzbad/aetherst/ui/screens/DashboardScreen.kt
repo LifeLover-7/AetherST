@@ -146,11 +146,13 @@ fun DashboardScreen(
             else -> 16.dp
         }
 
+        val dashboardScrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = horizontalPadding, end = horizontalPadding, bottom = bottomContentPadding + 10.dp),
-            verticalArrangement = Arrangement.SpaceBetween
+                .verticalScroll(dashboardScrollState)
+                .padding(start = horizontalPadding, end = horizontalPadding, bottom = bottomContentPadding + 16.dp),
+            verticalArrangement = Arrangement.spacedBy(if (isDesktop) (12 * scaleFactor).dp else (16 * scaleFactor).dp)
         ) {
             Column(
                 modifier = Modifier.padding(top = if (isDesktop) 8.dp else 36.dp),
@@ -299,125 +301,18 @@ fun DashboardScreen(
                 }
 
                 if (!isVeryCompactHeight) {
-                    val cardBorder = if (isGlass) BorderStroke(1.dp, Color.White.copy(alpha = 0.14f)) else null
-                    if (config.chainProvider == ChainProvider.TOR) {
-                        val torAllowed = config.protocol != AetherProtocol.ZERO_TRUST
-                        val torOn = config.torEnabled && torAllowed
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = if (torOn) RoundedCornerShape(20.dp) else RoundedCornerShape(50.dp),
-                            colors = CardDefaults.cardColors(containerColor = IosCardBg),
-                            border = cardBorder
-                        ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                        Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(AppPalette.accentVariant), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.Shield, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(strings.TOR_CHAIN, fontWeight = FontWeight.Bold, color = Color.White, fontSize = (13 * scaleFactor).sp)
-                                            Text(if (!torAllowed) strings.TOR_NOT_AVAILABLE_ZT else strings.TOR_ROUTE_VIA, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp)
-                                        }
-                                    }
-                                    Switch(
-                                        checked = config.torEnabled && torAllowed,
-                                        onCheckedChange = { onToggleTor(it) },
-                                        enabled = torAllowed && (connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR),
-                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = IosActiveGreen, checkedBorderColor = Color.Transparent, uncheckedThumbColor = Color.White, uncheckedTrackColor = AppPalette.inactiveTrack, uncheckedBorderColor = Color.Transparent)
-                                    )
-                                }
-                                if (torOn) {
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), thickness = 0.5.dp, modifier = Modifier.padding(start = 50.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().clickable { showTorSheet = true }.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(AppPalette.accentVariant.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.Settings, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(strings.SHOW_MORE_TOR, fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = (12 * scaleFactor).sp)
-                                            Text(strings.SHOW_MORE_SUBTITLE, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp)
-                                        }
-                                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = IosSecondaryLabel, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        val psiphonAllowed = config.protocol != AetherProtocol.ZERO_TRUST
-                        val psiphonOn = config.psiphonEnabled && psiphonAllowed
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = if (psiphonOn) RoundedCornerShape(20.dp) else RoundedCornerShape(50.dp),
-                            colors = CardDefaults.cardColors(containerColor = IosCardBg),
-                            border = cardBorder
-                        ) {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                        Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(AppPalette.accentVariant), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.Shield, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(strings.PSIPHON_CHAIN, fontWeight = FontWeight.Bold, color = Color.White, fontSize = (13 * scaleFactor).sp)
-                                            Text(if (!psiphonAllowed) strings.PSIPHON_NOT_AVAILABLE_ZT else strings.PSIPHON_ROUTE_VIA, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp)
-                                        }
-                                    }
-                                    Switch(
-                                        checked = config.psiphonEnabled && psiphonAllowed,
-                                        onCheckedChange = { enabled ->
-                                            val targetOuter = if (config.psiphonChainOuter.isBlank() || config.psiphonChainOuter == "masque") "wg" else config.psiphonChainOuter
-                                            val targetProto = if (config.protocol == AetherProtocol.MASQUE) AetherProtocol.WG else config.protocol
-                                            onUpdateConfig(
-                                                config.copy(
-                                                    psiphonEnabled = enabled,
-                                                    chainProvider = ChainProvider.PSIPHON,
-                                                    psiphonChainOuter = targetOuter,
-                                                    protocol = targetProto
-                                                )
-                                            )
-                                        },
-                                        enabled = psiphonAllowed && (connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR),
-                                        colors = SwitchDefaults.colors(checkedThumbColor = Color.White, checkedTrackColor = IosActiveGreen, checkedBorderColor = Color.Transparent, uncheckedThumbColor = Color.White, uncheckedTrackColor = AppPalette.inactiveTrack, uncheckedBorderColor = Color.Transparent)
-                                    )
-                                }
-                                if (psiphonOn) {
-                                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), thickness = 0.5.dp, modifier = Modifier.padding(start = 50.dp))
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth().clickable { showPsiphonSheet = true }.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(modifier = Modifier.size(28.dp).clip(RoundedCornerShape(8.dp)).background(AppPalette.accentVariant.copy(alpha = 0.6f)), contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.Settings, null, tint = Color.White, modifier = Modifier.size(14.dp))
-                                        }
-                                        Spacer(modifier = Modifier.width(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(strings.SHOW_MORE_PSIPHON, fontWeight = FontWeight.SemiBold, color = Color.White, fontSize = (12 * scaleFactor).sp)
-                                            Text(strings.SHOW_MORE_SUBTITLE, color = IosSecondaryLabel, fontSize = (10 * scaleFactor).sp)
-                                        }
-                                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = IosSecondaryLabel, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    IosProtocolSegmentedControl(
+                        selectedProtocol = config.protocol,
+                        onProtocolSelected = onUpdateProtocol,
+                        enabled = connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR,
+                        allowedProtocols = if (config.isPsiphonActive() || config.isTorActive()) setOf(AetherProtocol.MASQUE, AetherProtocol.WG, AetherProtocol.GOOL) else null,
+                        scaleFactor = scaleFactor
+                    )
 
                     ExitNodeCard(
                         config = config,
                         onUpdateConfig = onUpdateConfig,
+                        onOpenPsiphonSheet = { showPsiphonSheet = true },
                         onOpenWgDialog = { showCustomWgDialog = true },
                         onOpenSocks5Dialog = { showCustomSocks5Dialog = true },
                         enabled = connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR,
@@ -432,14 +327,6 @@ fun DashboardScreen(
                             scaleFactor = scaleFactor
                         )
                     }
-
-                    IosProtocolSegmentedControl(
-                        selectedProtocol = config.protocol,
-                        onProtocolSelected = onUpdateProtocol,
-                        enabled = connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR,
-                        allowedProtocols = if (config.isPsiphonActive() || config.isTorActive()) setOf(AetherProtocol.MASQUE, AetherProtocol.WG, AetherProtocol.GOOL) else null,
-                        scaleFactor = scaleFactor
-                    )
                 }
             }
         }
@@ -1281,6 +1168,7 @@ fun IosConnectionModeSegmentedControl(
 fun ExitNodeCard(
     config: AetherConfig,
     onUpdateConfig: (AetherConfig) -> Unit,
+    onOpenPsiphonSheet: () -> Unit = {},
     onOpenWgDialog: () -> Unit,
     onOpenSocks5Dialog: () -> Unit,
     enabled: Boolean = true,
@@ -1331,9 +1219,9 @@ fun ExitNodeCard(
             // 4-item Segmented Selector
             val options = listOf(
                 ExitNodeMode.DIRECT to (if (strings is StringsFa) "مستقیم" else "Direct"),
-                ExitNodeMode.PSIPHON_POOL to (if (strings is StringsFa) "سایفون Pool" else "Psiphon 4x"),
-                ExitNodeMode.CUSTOM_WG to (if (strings is StringsFa) "وایرگارد WG" else "WireGuard"),
-                ExitNodeMode.CUSTOM_SOCKS5 to (if (strings is StringsFa) "ساکس SOCKS" else "SOCKS5")
+                ExitNodeMode.PSIPHON_POOL to (if (strings is StringsFa) "سایفون" else "Psiphon"),
+                ExitNodeMode.CUSTOM_WG to (if (strings is StringsFa) "وایرگارد" else "WireGuard"),
+                ExitNodeMode.CUSTOM_SOCKS5 to (if (strings is StringsFa) "ساکس ۵" else "SOCKS5")
             )
 
             Row(
@@ -1355,7 +1243,13 @@ fun ExitNodeCard(
                             .clip(RoundedCornerShape(9.dp))
                             .background(bg)
                             .clickable(enabled = enabled) {
-                                onUpdateConfig(config.copy(exitNodeMode = mode))
+                                onUpdateConfig(
+                                    config.copy(
+                                        exitNodeMode = mode,
+                                        psiphonEnabled = (mode == ExitNodeMode.PSIPHON_POOL),
+                                        chainProvider = if (mode == ExitNodeMode.PSIPHON_POOL) ChainProvider.PSIPHON else config.chainProvider
+                                    )
+                                )
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1382,28 +1276,64 @@ fun ExitNodeCard(
                     )
                 }
                 ExitNodeMode.PSIPHON_POOL -> {
+                    val selectedRegion = config.psiphonEgressRegion.trim().uppercase()
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(IosGroupBg.copy(alpha = 0.6f))
+                            .clickable(enabled = enabled) { onOpenPsiphonSheet() }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(
-                            text = strings.EXIT_NODE_PSIPHON_POOL_DESC,
-                            color = IosSecondaryLabel,
-                            fontSize = (10 * scaleFactor).sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(IosActiveGreen.copy(alpha = 0.2f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            Text(
-                                text = "OSSH (4x)",
-                                color = IosActiveGreen,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 9.sp
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFF30B0C7)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.Public, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = strings.EXIT_COUNTRY,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
+                                    fontSize = (11 * scaleFactor).sp
+                                )
+                                Text(
+                                    text = CountryNames.label(selectedRegion),
+                                    color = IosActiveBlue,
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = (10 * scaleFactor).sp,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(IosActiveGreen.copy(alpha = 0.2f))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Auto/Pool",
+                                    color = IosActiveGreen,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 9.sp
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Icon(
+                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = null,
+                                tint = IosSecondaryLabel,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }

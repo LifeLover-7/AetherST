@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 object PsiphonController {
-    const val POOL_SIZE = 4
+    const val POOL_SIZE = 2
     const val BASE_PORT = 10801
 
     @Volatile private var psiphonPort: Int = 10800
@@ -168,15 +168,7 @@ object PsiphonController {
             json.put("EstablishTunnelTimeoutSeconds", 300)
             json.put("DataRootDirectory", dir.absolutePath)
             json.put("ClientVersion", "1")
-            
-            // Lock TunnelProtocol to OSSH with QUIC-OSSH fallback as requested
-            json.put("TunnelProtocol", "OSSH")
-            val protoArray = org.json.JSONArray().apply {
-                put("OSSH")
-                put("QUIC-OSSH")
-            }
-            json.put("TunnelProtocols", protoArray)
-
+            json.put("TunnelProtocol", "")
             json.put("RemoteServerListURL", "")
             json.put("LocalSocksProxyPort", port)
             if (!upstream.isNullOrEmpty()) json.put("UpstreamProxyURL", upstream)
@@ -189,7 +181,7 @@ object PsiphonController {
             json.toString()
         } catch (_: Exception) {
             val safeDir = dir.absolutePath.replace("\\", "\\\\")
-            "{\"LocalSocksProxyPort\":$port,\"DataRootDirectory\":\"$safeDir\",\"TunnelProtocol\":\"OSSH\"}"
+            "{\"LocalSocksProxyPort\":$port,\"DataRootDirectory\":\"$safeDir\",\"TunnelProtocol\":\"\"}"
         }
     }
 
