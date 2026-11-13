@@ -38,6 +38,7 @@ import io.github.immaghzbad.aetherst.shared.model.AetherIpMode
 import io.github.immaghzbad.aetherst.shared.model.ChainProvider
 import io.github.immaghzbad.aetherst.shared.model.ConnectionMode
 import io.github.immaghzbad.aetherst.shared.model.ConnectionStatus
+import io.github.immaghzbad.aetherst.shared.model.CustomWireGuardConfig
 import io.github.immaghzbad.aetherst.shared.model.ExitNodeMode
 import io.github.immaghzbad.aetherst.shared.model.RoutingMode
 import io.github.immaghzbad.aetherst.shared.model.TunnelEngine
@@ -487,7 +488,7 @@ class AetherVpnService : VpnService() {
             .setConfigureIntent(PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java), pendingFlags))
 
         val wgConfig = if (config.exitNodeMode == ExitNodeMode.CUSTOM_WG) config.customWgConfig else null
-        val supportsIpv6 = config.ipMode == AetherIpMode.IPV4_IPV6 || config.ipMode == AetherIpMode.IPV6_ONLY || config.ipv6Leak
+        val supportsIpv6 = config.effectiveIpMode() == AetherIpMode.DUAL || config.effectiveIpMode() == AetherIpMode.IPV6 || config.ipv6Leak
         val filteredWg = wgConfig?.filterForPrimarySupport(supportsIpv6)
 
         builder.addAddress("198.18.0.1", 24)
@@ -499,7 +500,7 @@ class AetherVpnService : VpnService() {
             if (v4Prefix != "198.18.0.1") {
                 runCatching { builder.addAddress(v4Prefix, v4Cidr) }
             }
-            if (filteredWg.addressV6 != null) {
+            if (filteredWg.addressV6.isNotBlank()) {
                 val v6Prefix = filteredWg.addressV6.substringBefore("/")
                 val v6Cidr = filteredWg.addressV6.substringAfter("/", "120").toIntOrNull() ?: 120
                 if (v6Prefix != "fd00::1") {
