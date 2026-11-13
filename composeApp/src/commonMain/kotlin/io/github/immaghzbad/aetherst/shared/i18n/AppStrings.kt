@@ -557,6 +557,10 @@ interface AppStrings {
     val ROUTING_PREBUILT_DESC: String
     val ROUTING_IRAN_DIRECT: String
     val ROUTING_IRAN_DIRECT_DESC: String
+    val BYPASS_IRAN_TITLE: String
+    val BYPASS_IRAN_DESC: String
+    val TOAST_BYPASS_IRAN_ENABLED: String
+    val TOAST_BYPASS_IRAN_DISABLED: String
     val ROUTING_ADULT_BLOCK: String
     val ROUTING_ADULT_BLOCK_DESC: String
     val ROUTING_ADS_DNS_BLOCK: String

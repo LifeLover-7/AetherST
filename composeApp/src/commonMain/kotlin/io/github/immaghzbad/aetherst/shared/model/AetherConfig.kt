@@ -225,6 +225,7 @@ data class AetherConfig(
     val blockedPackages: Set<String> = emptySet(),
     val tunneledPackages: Set<String> = emptySet(),
     val routingRules: List<RoutingRule> = emptyList(),
+    val bypassIran: Boolean = false,
     val teamName: String = "",
     val accessEmail: String = "",
     val accessId: String = "",

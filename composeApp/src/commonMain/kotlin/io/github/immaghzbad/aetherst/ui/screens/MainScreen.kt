@@ -311,6 +311,7 @@ private fun DashboardContent(viewModel: AetherViewModel, scaleFactor: Float, pla
                         onImportBackup = { viewModel.importFullBackup() },
                         onOptimizeMtu = { viewModel.optimizeMtu() },
                         isOptimizingMtu = isOptimizingMtu,
+                        onToggleBypassIran = { viewModel.toggleBypassIran(it) },
                         onRequestBatteryOptimization = { viewModel.requestBatteryOptimization() },
                         onOpenVpnSettings = { viewModel.openVpnSettings() },
                         onShowToast = { msg: String, err: Boolean -> viewModel.showToast(msg, err) },
@@ -407,6 +408,8 @@ private fun DashboardContent(viewModel: AetherViewModel, scaleFactor: Float, pla
                     onResolveConflict = { rules, replace -> viewModel.resolveConflict(rules, replace) },
                     onCancelImport = { viewModel.cancelImport() },
                     onClearImportError = { viewModel.clearImportError() },
+                    bypassIran = config.bypassIran,
+                    onToggleBypassIran = { viewModel.toggleBypassIran(it) },
                     onShowToast = { msg: String, err: Boolean -> viewModel.showToast(msg, err) },
                     onBack = { navController.popBackStack() },
                     scaleFactor = scaleFactor

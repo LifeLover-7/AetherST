@@ -75,9 +75,12 @@ actual object ConnectionController {
         @Volatile private var tunnelModeStarted = false
         @Volatile private var activeTargetPort = 1819
         @Volatile private var isPsiphonActive = false
+        @Volatile private var isUserInitiatedStop = false
         @Volatile private var wgExitTunnel: io.github.immaghzbad.aetherst.shared.net.WireGuardExitTunnel? = null
         @Volatile private var customSocksRelay: io.github.immaghzbad.aetherst.shared.net.CustomSocks5Relay? = null
         private var statusJob: Job? = null
+        private var watchdogJob: Job? = null
+        private var reconnectJob: Job? = null
 
         init {
             scope.launch {
@@ -101,13 +104,16 @@ actual object ConnectionController {
         fun start() {
             scope.launch {
                 actionMutex.withLock {
-                    // توجه: AetherViewModel قبل از صدا زدن start وضعیت را روی STARTING می‌گذارد،
-                    // پس فقط باید فعال بودن connectJob یا وضعیت RUNNING/VALIDATING چک شود
                     if (connectJob?.isActive == true ||
                         _status.value == ConnectionStatus.RUNNING ||
                         _status.value == ConnectionStatus.VALIDATING
                     ) return@withLock
 
+                    isUserInitiatedStop = false
+                    watchdogJob?.cancel()
+                    watchdogJob = null
+                    reconnectJob?.cancel()
+                    reconnectJob = null
                     doStop()
                     _status.value = ConnectionStatus.STARTING
 
@@ -167,8 +173,19 @@ actual object ConnectionController {
             statusJob?.cancel()
             statusJob = scope.launch {
                 runner.connectionStatus.collect { s ->
-                    if (_status.value != ConnectionStatus.STOPPED && s != ConnectionStatus.STOPPED) {
-                        _status.value = s
+                    if (!isUserInitiatedStop) {
+                        if (s == ConnectionStatus.ERROR || s == ConnectionStatus.FAILED) {
+                            if (_status.value == ConnectionStatus.RUNNING && effectiveConfig.smartReconnect) {
+                                LogRepository.w("[Controller] Runner reported $s during active session. Holding network and starting auto-reconnect...", "Watchdog")
+                                triggerPersistentReconnect(effectiveConfig, coreSocksPort, actualHttpPort)
+                                return@collect
+                            }
+                        }
+                        if (_status.value != ConnectionStatus.STOPPED && s != ConnectionStatus.STOPPED) {
+                            if (_status.value != ConnectionStatus.RECONNECTING) {
+                                _status.value = s
+                            }
+                        }
                     }
                 }
             }
@@ -279,6 +296,134 @@ actual object ConnectionController {
 
             _status.value = ConnectionStatus.RUNNING
             startTimer()
+            startWatchdog(effectiveConfig, coreSocksPort, actualHttpPort)
+        }
+
+        private fun startWatchdog(effectiveConfig: AetherConfig, coreSocksPort: Int, actualHttpPort: Int) {
+            watchdogJob?.cancel()
+            watchdogJob = scope.launch {
+                while (isActive && !isUserInitiatedStop) {
+                    delay(4000.milliseconds)
+                    if (_status.value == ConnectionStatus.RUNNING && !isUserInitiatedStop) {
+                        val portOk = probePort("127.0.0.1", coreSocksPort)
+                        if (!portOk) {
+                            if (effectiveConfig.smartReconnect && !isUserInitiatedStop) {
+                                LogRepository.w("[Controller] Core port $coreSocksPort probe failed (network drop / mobile hotspot interrupt). Holding TUN interface...", "Watchdog")
+                                triggerPersistentReconnect(effectiveConfig, coreSocksPort, actualHttpPort)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private fun triggerPersistentReconnect(effectiveConfig: AetherConfig, coreSocksPort: Int, actualHttpPort: Int) {
+            if (reconnectJob?.isActive == true || isUserInitiatedStop) return
+            _status.value = ConnectionStatus.RECONNECTING
+            LogRepository.i("[Controller] State -> RECONNECTING. Keeping Wintun interface & routes intact to prevent app disconnects.", "Watchdog")
+
+            reconnectJob = scope.launch {
+                var attempt = 0
+                val maxAttempts = effectiveConfig.reconnectRetryLimit.coerceIn(5, 60)
+                while (isActive && !isUserInitiatedStop && attempt < maxAttempts) {
+                    attempt++
+                    LogRepository.i("[Controller] Hold & Reconnect attempt $attempt of $maxAttempts...", "Watchdog")
+
+                    // Gently stop runner process only (do NOT stop TunHelper / Wintun!)
+                    try { runner.stop() } catch (_: Throwable) {}
+                    delay(1500.milliseconds)
+
+                    if (isUserInitiatedStop) break
+
+                    val hasPhysicalRoute = canReachGatewayOrInternet()
+                    if (!hasPhysicalRoute) {
+                        LogRepository.i("[Controller] Physical internet / mobile hotspot link unavailable (e.g. phone call). Holding...", "Watchdog")
+                        delay(2500.milliseconds)
+                        continue
+                    }
+
+                    try {
+                        runner.start(
+                            config = effectiveConfig.copy(httpProxyEnabled = true, httpPort = actualHttpPort.toString()),
+                            bindAddress = "127.0.0.1:$coreSocksPort",
+                            onCodeRequired = { _isWaitingForCode.value = true },
+                            inputProvider = { loginCodeChannel.receive() }
+                        )
+
+                        var ready = false
+                        for (w in 0..20) {
+                            if (isUserInitiatedStop) break
+                            if (probePort("127.0.0.1", coreSocksPort)) {
+                                ready = true
+                                break
+                            }
+                            delay(500.milliseconds)
+                        }
+
+                        if (ready) {
+                            if (effectiveConfig.exitNodeMode == ExitNodeMode.CUSTOM_WG && wgExitTunnel == null) {
+                                try {
+                                    val wgCfg = effectiveConfig.customWgConfig
+                                    if (wgCfg.isValid()) {
+                                        val tunnel = io.github.immaghzbad.aetherst.shared.net.WireGuardExitTunnel(
+                                            config = wgCfg,
+                                            primarySocksHost = "127.0.0.1",
+                                            primarySocksPort = coreSocksPort,
+                                            localListenPort = 10805
+                                        )
+                                        tunnel.start()
+                                        wgExitTunnel = tunnel
+                                    }
+                                } catch (_: Throwable) {}
+                            } else if (effectiveConfig.exitNodeMode == ExitNodeMode.CUSTOM_SOCKS5 && customSocksRelay == null) {
+                                try {
+                                    val relay = io.github.immaghzbad.aetherst.shared.net.CustomSocks5Relay(
+                                        listenPort = 10806,
+                                        primarySocksHost = "127.0.0.1",
+                                        primarySocksPort = coreSocksPort,
+                                        remoteHost = effectiveConfig.customSocks5Host.trim(),
+                                        remotePort = effectiveConfig.customSocks5Port,
+                                        username = effectiveConfig.customSocks5Username,
+                                        password = effectiveConfig.customSocks5Password
+                                    )
+                                    relay.start()
+                                    customSocksRelay = relay
+                                } catch (_: Throwable) {}
+                            }
+
+                            _status.value = ConnectionStatus.RUNNING
+                            LogRepository.i("[Controller] Resilient reconnect SUCCESSFUL! Session restored without dropping application sockets.", "Watchdog")
+                            return@launch
+                        }
+                    } catch (e: Exception) {
+                        LogRepository.w("[Controller] Reconnect attempt failed: ${e.message}", "Watchdog")
+                    }
+
+                    delay(2000.milliseconds)
+                }
+
+                if (!isUserInitiatedStop && _status.value == ConnectionStatus.RECONNECTING) {
+                    LogRepository.e("[Controller] Persistent reconnect exhausted after $maxAttempts attempts.", "Watchdog")
+                    _status.value = ConnectionStatus.ERROR
+                    doStop()
+                }
+            }
+        }
+
+        private suspend fun canReachGatewayOrInternet(): Boolean = withContext(Dispatchers.IO) {
+            runCatching {
+                Socket().use {
+                    it.connect(InetSocketAddress("1.1.1.1", 53), 1500)
+                    true
+                }
+            }.getOrElse {
+                runCatching {
+                    Socket().use {
+                        it.connect(InetSocketAddress("8.8.8.8", 53), 1500)
+                        true
+                    }
+                }.getOrDefault(false)
+            }
         }
 
         private fun startTunnelMode(config: AetherConfig, targetPort: Int) {
@@ -298,6 +443,12 @@ actual object ConnectionController {
         fun stop() {
             scope.launch {
                 actionMutex.withLock {
+                    isUserInitiatedStop = true
+                    watchdogJob?.cancel()
+                    watchdogJob = null
+                    reconnectJob?.cancel()
+                    reconnectJob = null
+
                     if (_status.value == ConnectionStatus.STOPPED && connectJob?.isActive != true) return@withLock
                     _status.value = ConnectionStatus.STOPPED
                     _isWaitingForCode.value = false
@@ -311,6 +462,10 @@ actual object ConnectionController {
 
         private fun doStop() {
             LogRepository.i("[Controller] Stopping all components")
+            watchdogJob?.cancel()
+            watchdogJob = null
+            reconnectJob?.cancel()
+            reconnectJob = null
             statusJob?.cancel()
             statusJob = null
 

@@ -673,7 +673,12 @@ fun IosStatusHeroCard(
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     if (connectionStatus == ConnectionStatus.RUNNING) {
                         Row(
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(IosGroupBg).padding(horizontal = 8.dp, vertical = 6.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(IosGroupBg)
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             TrafficValue(
@@ -685,6 +690,30 @@ fun IosStatusHeroCard(
                                 modifier = Modifier.weight(1f),
                                 scaleFactor = scaleFactor
                             )
+
+                            // Live Speedometer Badge in the center
+                            val totalSpeed = sessionTraffic.uploadSpeedBps + sessionTraffic.downloadSpeedBps
+                            val isActiveSpeed = totalSpeed > 20.0
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier.padding(horizontal = 6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Speed,
+                                    contentDescription = "Live Speed",
+                                    tint = if (isActiveSpeed) IosActiveGreen else IosSecondaryLabel,
+                                    modifier = Modifier.size((16 * scaleFactor).dp)
+                                )
+                                Spacer(modifier = Modifier.height(1.dp))
+                                Text(
+                                    text = formatTrafficSpeed(totalSpeed),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isActiveSpeed) Color.White else IosSecondaryLabel,
+                                    fontSize = (8 * scaleFactor).sp
+                                )
+                            }
+
                             TrafficValue(
                                 label = "DOWNLOAD",
                                 value = formatTrafficBytes(sessionTraffic.downloadedBytes),
@@ -703,10 +732,13 @@ fun IosStatusHeroCard(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .combinedClickable(
-                                onClick = { onRefreshIpInfo() },
-                                onLongClick = { if (ipInfo.ip.isNotEmpty()) onCopy(ipInfo.ip) }
-                            ),
+                            .clickable {
+                                if (ipInfo.ip.isNotEmpty()) {
+                                    onCopy(ipInfo.ip)
+                                } else {
+                                    onRefreshIpInfo()
+                                }
+                            },
                         color = IosGroupBg
                     ) {
                         Row(
@@ -756,10 +788,28 @@ fun IosStatusHeroCard(
                                 }
                             }
 
-                            if (ipInfo.isLoading) {
-                                CircularProgressIndicator(modifier = Modifier.size((12 * scaleFactor).dp), color = IosActiveBlue, strokeWidth = 1.5.dp)
-                            } else {
-                                Icon(imageVector = Icons.Default.Refresh, contentDescription = "Refresh", tint = IosSecondaryLabel, modifier = Modifier.size((12 * scaleFactor).dp))
+                            Box(
+                                modifier = Modifier
+                                    .size((30 * scaleFactor).dp)
+                                    .clip(CircleShape)
+                                    .clickable { onRefreshIpInfo() }
+                                    .padding((4 * scaleFactor).dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (ipInfo.isLoading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size((14 * scaleFactor).dp),
+                                        color = IosActiveBlue,
+                                        strokeWidth = 2.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Refresh,
+                                        contentDescription = "Refresh",
+                                        tint = IosActiveBlue,
+                                        modifier = Modifier.size((18 * scaleFactor).dp)
+                                    )
+                                }
                             }
                         }
                     }
@@ -1684,11 +1734,66 @@ private fun formatTrafficBytes(bytes: Long): String {
     }
 }
 
+private fun formatTrafficSpeed(bytesPerSec: Double): String {
+    val safeBps = bytesPerSec.coerceAtLeast(0.0)
+    val units = arrayOf("B/s", "KB/s", "MB/s", "GB/s")
+    var value = safeBps
+    var unitIndex = 0
+    while (value >= 1024.0 && unitIndex < units.lastIndex) {
+        value /= 1024.0
+        unitIndex += 1
+    }
+    val rounded = (value * 10).toLong() / 10.0
+    val formatted = if (rounded >= 100 || unitIndex == 0) "${rounded.toLong()}" else "$rounded"
+    return "$formatted ${units[unitIndex]}"
+}
+
 @Composable
-private fun TrafficValue(label: String, value: String, color: Color, alignment: Alignment.Horizontal, modifier: Modifier = Modifier, speed: Double = 0.0, scaleFactor: Float = 1f) {
-    Column(modifier = modifier.heightIn(min = 38.dp), horizontalAlignment = alignment) {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = IosSecondaryLabel, fontSize = (8 * scaleFactor).sp)
-        Text(text = value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = color, fontSize = (12 * scaleFactor).sp)
+private fun TrafficValue(
+    label: String,
+    value: String,
+    color: Color,
+    alignment: Alignment.Horizontal,
+    modifier: Modifier = Modifier,
+    speed: Double = 0.0,
+    scaleFactor: Float = 1f
+) {
+    val isUpload = label.contains("UP", ignoreCase = true)
+    val arrow = if (isUpload) "↑" else "↓"
+    val formattedSpeed = formatTrafficSpeed(speed)
+    val hasTraffic = speed > 10.0
+
+    Column(modifier = modifier.heightIn(min = 40.dp), horizontalAlignment = alignment) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = IosSecondaryLabel,
+                fontSize = (8 * scaleFactor).sp
+            )
+            Spacer(modifier = Modifier.width((4 * scaleFactor).dp))
+            Surface(
+                color = if (hasTraffic) color.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.06f),
+                shape = RoundedCornerShape(4.dp)
+            ) {
+                Text(
+                    text = "$arrow $formattedSpeed",
+                    color = if (hasTraffic) color else IosSecondaryLabel,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = (7.5 * scaleFactor).sp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            color = Color.White,
+            fontSize = (12 * scaleFactor).sp
+        )
     }
 }
 

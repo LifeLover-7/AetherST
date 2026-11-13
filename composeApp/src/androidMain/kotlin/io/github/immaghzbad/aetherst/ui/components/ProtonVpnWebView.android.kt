@@ -327,3 +327,4 @@ actual fun ProtonVpnWebView(
         }
     }
 }
+

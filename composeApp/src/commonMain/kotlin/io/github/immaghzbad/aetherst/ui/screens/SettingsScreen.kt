@@ -179,6 +179,7 @@ fun SettingsScreen(
     onImportBackup: () -> Unit,
     onOptimizeMtu: () -> Unit,
     isOptimizingMtu: Boolean = false,
+    onToggleBypassIran: (Boolean) -> Unit = {},
     onShowToast: (String, Boolean) -> Unit = { _, _ -> },
     initialPage: SettingsPage? = null,
     onSubPageClosed: () -> Unit = {},
@@ -221,6 +222,7 @@ fun SettingsScreen(
             onImportBackup = onImportBackup,
             onOptimizeMtu = onOptimizeMtu,
             isOptimizingMtu = isOptimizingMtu,
+            onToggleBypassIran = onToggleBypassIran,
             onShowToast = onShowToast,
             bottomContentPadding = bottomContentPadding,
             onOpenDnsOptimizer = onOpenDnsOptimizer
@@ -296,6 +298,7 @@ private fun SettingsSubPage(
     onImportBackup: () -> Unit,
     onOptimizeMtu: () -> Unit,
     isOptimizingMtu: Boolean,
+    onToggleBypassIran: (Boolean) -> Unit = {},
     onShowToast: (String, Boolean) -> Unit,
     bottomContentPadding: Dp,
     onOpenDnsOptimizer: () -> Unit = {}
@@ -329,7 +332,7 @@ private fun SettingsSubPage(
         LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = bottomContentPadding + 12.dp, top = 4.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             when (page) {
                 SettingsPage.PRESETS -> item { PresetPage(config, onUpdateConfig, onApplyPreset, onShowToast) }
-                SettingsPage.CONNECTION -> item { ConnectionPage(config, isAndroid, onUpdateConfig, onUpdateTunnelEngine, onOpenSplitTunneling, onOpenRoutingRules) }
+                SettingsPage.CONNECTION -> item { ConnectionPage(config, isAndroid, onUpdateConfig, onUpdateTunnelEngine, onOpenSplitTunneling, onOpenRoutingRules, onToggleBypassIran) }
                 SettingsPage.PROTOCOL -> item { ProtocolPage(config, onUpdateConfig, onOptimizeMtu, isOptimizingMtu) }
                 SettingsPage.ZEROTRUST -> item { ZeroTrustPage(config, showAdvancedZt, onUpdateConfig) { showAdvancedZt = it } }
                 SettingsPage.NETWORK -> item { NetworkPage(config, onUpdateConfig, onShowToast, onOpenDnsOptimizer) }
@@ -440,7 +443,8 @@ private fun ConnectionPage(
     onUpdateConfig: (AetherConfig) -> Unit,
     onUpdateTunnelEngine: (TunnelEngine) -> Unit,
     onOpenSplitTunneling: () -> Unit,
-    onOpenRoutingRules: () -> Unit
+    onOpenRoutingRules: () -> Unit,
+    onToggleBypassIran: (Boolean) -> Unit = {}
 ) {
     val strings = LocalAppStrings.current
     var showCustomWgDialog by remember { mutableStateOf(false) }
@@ -484,6 +488,16 @@ private fun ConnectionPage(
             }
 
             IosPickerRow(icon = Icons.AutoMirrored.Filled.AltRoute, iconBg = IosActiveBlue, title = strings.DOMAIN_IP_ROUTING, value = "${config.routingRules.size} ${strings.ROUTING_RULES_TITLE}", options = emptyList(), onOptionSelected = {}, onClickOverride = onOpenRoutingRules)
+            AppDivider()
+            IosSwitchRow(
+                icon = Icons.Default.Public,
+                iconBg = IosActiveGreen,
+                title = strings.BYPASS_IRAN_TITLE,
+                subtitle = strings.BYPASS_IRAN_DESC,
+                checked = config.bypassIran,
+                onCheckedChange = { onToggleBypassIran(it) },
+                testTag = "switch_bypass_iran"
+            )
             AppDivider()
             val providerOptions = listOf("Psiphon", "Tor")
             val providerIdx = if (config.chainProvider == ChainProvider.TOR) 1 else 0

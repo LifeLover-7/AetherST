@@ -142,6 +142,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             routingRules = settings.getString("${prefix}routing_rules", "").let {
                 if (it.isEmpty()) emptyList() else runCatching { Json.decodeFromString<List<RoutingRule>>(it) }.getOrDefault(emptyList())
             },
+            bypassIran = settings.getBoolean("${prefix}bypass_iran", false),
             teamName = settings.getString("${prefix}team_name", ""),
             accessEmail = settings.getString("${prefix}access_email", ""),
             accessId = settings.getString("${prefix}access_id", ""),
@@ -428,6 +429,7 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         settings.putInt("${prefix}mtu", cfg.mtu)
         settings.putString("${prefix}connection_mode", cfg.connectionMode.name)
         settings.putString("${prefix}routing_rules", Json.encodeToString(cfg.routingRules))
+        settings.putBoolean("${prefix}bypass_iran", cfg.bypassIran)
         settings.putString("${prefix}team_name", cfg.teamName)
         settings.putString("${prefix}access_email", cfg.accessEmail)
         settings.putString("${prefix}access_id", cfg.accessId)

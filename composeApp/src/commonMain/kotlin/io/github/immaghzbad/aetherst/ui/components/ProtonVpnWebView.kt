@@ -13,3 +13,4 @@ expect fun ProtonVpnWebView(
     onConfigExtracted: (String) -> Unit,
     onClose: () -> Unit
 )
+

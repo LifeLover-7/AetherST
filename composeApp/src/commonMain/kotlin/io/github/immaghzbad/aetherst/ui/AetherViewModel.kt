@@ -22,6 +22,7 @@ import io.github.immaghzbad.aetherst.shared.model.AetherProtocol
 import io.github.immaghzbad.aetherst.shared.model.AppInfo
 import io.github.immaghzbad.aetherst.shared.model.ConnectionMode
 import io.github.immaghzbad.aetherst.shared.model.ConnectionStatus
+import io.github.immaghzbad.aetherst.shared.model.ExitNodeMode
 import io.github.immaghzbad.aetherst.shared.model.LogEntry
 import io.github.immaghzbad.aetherst.shared.model.RoutingMode
 import io.github.immaghzbad.aetherst.shared.model.RoutingRule
@@ -372,8 +373,44 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
         val current = config.value
         if (current.routingRules.isEmpty()) return
         LogRepository.i("All routing rules cleared")
-        updateConfig(current.copy(routingRules = emptyList()))
+        updateConfig(current.copy(routingRules = emptyList(), bypassIran = false))
         restartConnection()
+    }
+
+    fun toggleBypassIran(enabled: Boolean) {
+        viewModelScope.launch {
+            val current = config.value
+            val assetContent = systemUtils.readInternalAsset("iran-direct-domains-ipv4-ipv6.astb")
+            if (assetContent == null) {
+                showToast(localizedToast { TOAST_FAILED_LOAD_INTERNAL }, true)
+                return@launch
+            }
+
+            val lines = assetContent.lines().filter { it.isNotBlank() }
+            val iranPatterns = mutableSetOf<String>()
+            var i = 0
+            while (i + 1 < lines.size) {
+                iranPatterns.add(lines[i].trim())
+                i += 2
+            }
+
+            val updatedRules = if (enabled) {
+                val nonIranRules = current.routingRules.filter { it.pattern !in iranPatterns }
+                val iranRules = iranPatterns.map { RoutingRule(it, RoutingMode.DIRECT) }
+                nonIranRules + iranRules
+            } else {
+                current.routingRules.filter { it.pattern !in iranPatterns }
+            }
+
+            updateConfig(current.copy(bypassIran = enabled, routingRules = updatedRules))
+            val msg = if (enabled) {
+                localizedToast { TOAST_BYPASS_IRAN_ENABLED }
+            } else {
+                localizedToast { TOAST_BYPASS_IRAN_DISABLED }
+            }
+            showToast(msg, false)
+            restartConnection()
+        }
     }
 
     fun resetAllSettings() {
@@ -605,7 +642,7 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
     fun refreshIpInfo() {
         viewModelScope.launch {
             val state = connectionStatus.value
-            if (state == ConnectionStatus.RUNNING) {
+            if (state == ConnectionStatus.RUNNING || state == ConnectionStatus.TUN_ACTIVE) {
                 fetchPublicIp()
             } else {
                 IpInfoRepository.fetchIpInfo(useProxy = false, provider = config.value.ipInfoProvider)
@@ -623,15 +660,21 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
             LogRepository.i("MIM guard active, deferring IP lookup until final RUNNING", "IpWhois")
             return
         }
-        val psiphon = ActiveProxyProvider.psiphonProxyUrl
-        if (!psiphon.isNullOrEmpty()) {
-            val body = psiphon.removePrefix("socks5://").removePrefix("socks://")
-            val parts = body.split(":", limit = 2)
-            val host = parts.first()
-            val port = parts.getOrNull(1)?.toIntOrNull() ?: 3080
-            IpInfoRepository.fetchIpInfo(host, port, useProxy = true, provider = cfg.ipInfoProvider)
-            return
+
+        val effectivePort = when (cfg.exitNodeMode) {
+            ExitNodeMode.CUSTOM_WG -> 10805
+            ExitNodeMode.CUSTOM_SOCKS5 -> 10806
+            ExitNodeMode.PSIPHON_POOL -> 10800
+            ExitNodeMode.DIRECT -> {
+                val psiphon = ActiveProxyProvider.psiphonProxyUrl
+                if (!psiphon.isNullOrEmpty()) {
+                    psiphon.removePrefix("socks5://").removePrefix("socks://").split(":").getOrNull(1)?.toIntOrNull() ?: 3080
+                } else {
+                    cfg.socksPort.toIntOrNull() ?: 1819
+                }
+            }
         }
+
         val tor = ActiveProxyProvider.torProxyUrl
         if (!tor.isNullOrEmpty()) {
             val body = tor.removePrefix("socks5://").removePrefix("socks://")
@@ -640,7 +683,7 @@ class AetherViewModel(platformContext: PlatformContext) : ViewModel() {
             val port = parts.getOrNull(1)?.toIntOrNull() ?: 3081
             IpInfoRepository.fetchIpInfo(host, port, useProxy = true, provider = cfg.ipInfoProvider)
         } else {
-            IpInfoRepository.fetchIpInfo(cfg.socksHost, cfg.socksPort.toIntOrNull() ?: 1819, useProxy = true, provider = cfg.ipInfoProvider)
+            IpInfoRepository.fetchIpInfo("127.0.0.1", effectivePort, useProxy = true, provider = cfg.ipInfoProvider)
         }
     }
 

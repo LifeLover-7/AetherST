@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.withLock
 import okhttp3.Request
 import kotlinx.serialization.json.*
 import java.net.InetSocketAddress
@@ -24,7 +25,8 @@ object IpInfoRepository {
     val ipInfo: StateFlow<IpInfo> = _ipInfo.asStateFlow()
 
     private val json = Json { ignoreUnknownKeys = true }
-    private val mutex = kotlinx.coroutines.sync.Mutex()
+    private val jobMutex = kotlinx.coroutines.sync.Mutex()
+    private var activeFetchJob: kotlinx.coroutines.Job? = null
 
     data class ExitCountry(val ip: String, val countryCode: String, val source: String)
 
@@ -93,50 +95,70 @@ object IpInfoRepository {
     }
 
     suspend fun fetchIpInfo(socksHost: String = "127.0.0.1", socksPort: Int = 1819, useProxy: Boolean = true, provider: IpInfoProvider = IpInfoProvider.AUTO) {
-        mutex.lock()
-        try {
-            _ipInfo.value = _ipInfo.value.copy(isLoading = true, error = null)
-            withContext(Dispatchers.Default) {
-                if (!useProxy) {
-                    LogRepository.i("Querying public IP (direct)...", "IpWhois")
-                    val rawResult = fetchParallelDirect(provider)
-                    val result = enrichCountryIfMissing(rawResult)
-                    if (result != null) {
-                        _ipInfo.value = result
-                        LogRepository.i("Direct IP: ${result.ip} (${result.country})", "IpWhois")
-                        return@withContext
-                    }
-                } else {
-                    delay(500.milliseconds)
-                    for (attempt in 1..4) {
-                        LogRepository.i("Querying public IP via tunnel ($socksHost:$socksPort) attempt $attempt...", "IpWhois")
-                        val rawResult = fetchParallelViaProxy(socksHost, socksPort, provider)
-                        val result = enrichCountryIfMissing(rawResult, socksHost, socksPort)
+        val oldJob = jobMutex.withLock {
+            val job = activeFetchJob
+            activeFetchJob = null
+            job
+        }
+        oldJob?.cancel()
+
+        coroutineScope {
+            val currentJob = launch {
+                _ipInfo.value = _ipInfo.value.copy(isLoading = true, error = null)
+                withContext(Dispatchers.Default) {
+                    if (!useProxy) {
+                        LogRepository.i("Querying public IP (direct)...", "IpWhois")
+                        val rawResult = fetchParallelDirect(provider)
+                        val result = enrichCountryIfMissing(rawResult)
                         if (result != null) {
                             _ipInfo.value = result
-                            LogRepository.i("Tunnel IP: ${result.ip} (${result.country}) [${result.countryCode}]", "IpWhois")
+                            LogRepository.i("Direct IP: ${result.ip} (${result.country})", "IpWhois")
                             return@withContext
                         }
-                        if (attempt < 4) {
-                            delay((1000L * attempt).milliseconds)
+                    } else {
+                        delay(200.milliseconds)
+                        for (attempt in 1..3) {
+                            LogRepository.i("Querying public IP via tunnel ($socksHost:$socksPort) attempt $attempt...", "IpWhois")
+                            val rawResult = fetchParallelViaProxy(socksHost, socksPort, provider)
+                            val result = enrichCountryIfMissing(rawResult, socksHost, socksPort)
+                            if (result != null) {
+                                _ipInfo.value = result
+                                LogRepository.i("Tunnel IP: ${result.ip} (${result.country}) [${result.countryCode}]", "IpWhois")
+                                return@withContext
+                            }
+                            if (attempt < 3) {
+                                delay((600L * attempt).milliseconds)
+                            }
                         }
+                        LogRepository.w("SOCKS proxy lookup failed after all attempts.", "IpWhois")
                     }
-                    LogRepository.w("SOCKS proxy lookup failed after all attempts.", "IpWhois")
-                }
-                LogRepository.w("${if (useProxy) "SOCKS proxy" else "Direct"} IP lookup failed after all attempts.", "IpWhois")
-                val prev = _ipInfo.value
-                val isStaleIranInProxy = useProxy && prev.countryCode.uppercase() == "IR"
-                if (prev.ip.isNotEmpty() && !isStaleIranInProxy) {
-                    _ipInfo.value = prev.copy(isLoading = false, error = null)
-                } else {
-                    _ipInfo.value = prev.copy(
-                        isLoading = false,
-                        error = if (useProxy) "Proxy Lookup Failed" else "Direct Lookup Failed"
-                    )
+                    LogRepository.w("${if (useProxy) "SOCKS proxy" else "Direct"} IP lookup failed after all attempts.", "IpWhois")
+                    val prev = _ipInfo.value
+                    val isStaleIranInProxy = useProxy && prev.countryCode.uppercase() == "IR"
+                    if (prev.ip.isNotEmpty() && !isStaleIranInProxy) {
+                        _ipInfo.value = prev.copy(isLoading = false, error = null)
+                    } else {
+                        _ipInfo.value = prev.copy(
+                            isLoading = false,
+                            error = if (useProxy) "Proxy Lookup Failed" else "Direct Lookup Failed"
+                        )
+                    }
                 }
             }
-        } finally {
-            mutex.unlock()
+
+            jobMutex.withLock {
+                activeFetchJob = currentJob
+            }
+
+            try {
+                currentJob.join()
+            } finally {
+                jobMutex.withLock {
+                    if (activeFetchJob === currentJob) {
+                        activeFetchJob = null
+                    }
+                }
+            }
         }
     }
 

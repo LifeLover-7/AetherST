@@ -2,6 +2,7 @@ package io.github.immaghzbad.aetherst.shared.ui.screens
 import io.github.immaghzbad.aetherst.shared.ui.theme.AppPalette
 
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -94,6 +95,8 @@ fun RoutingRulesScreen(
     onResolveConflict: (List<RoutingRule>, Boolean) -> Unit,
     onCancelImport: () -> Unit,
     onClearImportError: () -> Unit,
+    bypassIran: Boolean = false,
+    onToggleBypassIran: (Boolean) -> Unit = {},
     onShowToast: (String, Boolean) -> Unit = { _, _ -> },
     onBack: () -> Unit,
     scaleFactor: Float = 1f
@@ -381,6 +384,50 @@ fun RoutingRulesScreen(
                     }
                 }
             )
+        }
+
+        // 1-Click Bypass Iran Card
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = (16 * scaleFactor).dp, vertical = (4 * scaleFactor).dp),
+            shape = RoundedCornerShape(12.dp),
+            color = if (bypassIran) IosActiveGreen.copy(alpha = 0.12f) else IosCardBg,
+            border = if (bypassIran) BorderStroke(1.dp, IosActiveGreen.copy(alpha = 0.4f)) else null
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = (12 * scaleFactor).dp, vertical = (8 * scaleFactor).dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "🇮🇷", fontSize = (18 * scaleFactor).sp)
+                Spacer(modifier = Modifier.width((10 * scaleFactor).dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = strings.BYPASS_IRAN_TITLE,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = (13 * scaleFactor).sp
+                    )
+                    Text(
+                        text = strings.BYPASS_IRAN_DESC,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = IosSecondaryLabel,
+                        fontSize = (10 * scaleFactor).sp,
+                        maxLines = 1
+                    )
+                }
+                Switch(
+                    checked = bypassIran,
+                    onCheckedChange = onToggleBypassIran,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = IosActiveGreen,
+                        uncheckedThumbColor = Color.White,
+                        uncheckedTrackColor = IosSecondaryLabel.copy(alpha = 0.3f)
+                    )
+                )
+            }
         }
 
         ModeFilterChips(
