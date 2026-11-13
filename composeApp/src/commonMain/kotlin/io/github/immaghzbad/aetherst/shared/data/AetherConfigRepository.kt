@@ -211,7 +211,47 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             excludedPackages = settings.getStringSet("${prefix}excluded_packages", emptySet()),
             blockedPackages = settings.getStringSet("${prefix}blocked_packages", emptySet()),
             tunneledPackages = settings.getStringSet("${prefix}tunneled_packages", emptySet()),
+            exitNodeMode = sanitizeExitNodeMode(settings.getString("${prefix}exit_node_mode", ExitNodeMode.DIRECT.name)),
+            customWgConfig = loadCustomWgConfig(prefix),
+            customSocks5Host = settings.getString("${prefix}custom_socks5_host", ""),
+            customSocks5Port = settings.getInt("${prefix}custom_socks5_port", 1080),
+            customSocks5Username = settings.getString("${prefix}custom_socks5_username", ""),
+            customSocks5Password = settings.getString("${prefix}custom_socks5_password", ""),
         ).let { enforceWireGuardConstraints(it) }
+    }
+
+    private fun sanitizeExitNodeMode(value: String): ExitNodeMode {
+        return try { ExitNodeMode.valueOf(value.uppercase()) } catch (_: Exception) { ExitNodeMode.DIRECT }
+    }
+
+    private fun loadCustomWgConfig(prefix: String): CustomWireGuardConfig {
+        return CustomWireGuardConfig(
+            rawConfig = settings.getString("${prefix}custom_wg_raw", ""),
+            privateKey = settings.getString("${prefix}custom_wg_privkey", ""),
+            addressV4 = settings.getString("${prefix}custom_wg_addr_v4", ""),
+            addressV6 = settings.getString("${prefix}custom_wg_addr_v6", ""),
+            dns = settings.getString("${prefix}custom_wg_dns", "1.1.1.1"),
+            mtu = settings.getInt("${prefix}custom_wg_mtu", 1280),
+            publicKey = settings.getString("${prefix}custom_wg_pubkey", ""),
+            endpoint = settings.getString("${prefix}custom_wg_endpoint", ""),
+            allowedIpsV4 = settings.getString("${prefix}custom_wg_allowed_v4", "0.0.0.0/0"),
+            allowedIpsV6 = settings.getString("${prefix}custom_wg_allowed_v6", "::/0"),
+            persistentKeepalive = settings.getInt("${prefix}custom_wg_keepalive", 25)
+        )
+    }
+
+    private fun saveCustomWgConfig(prefix: String, wg: CustomWireGuardConfig) {
+        settings.putString("${prefix}custom_wg_raw", wg.rawConfig)
+        settings.putString("${prefix}custom_wg_privkey", wg.privateKey)
+        settings.putString("${prefix}custom_wg_addr_v4", wg.addressV4)
+        settings.putString("${prefix}custom_wg_addr_v6", wg.addressV6)
+        settings.putString("${prefix}custom_wg_dns", wg.dns)
+        settings.putInt("${prefix}custom_wg_mtu", wg.mtu)
+        settings.putString("${prefix}custom_wg_pubkey", wg.publicKey)
+        settings.putString("${prefix}custom_wg_endpoint", wg.endpoint)
+        settings.putString("${prefix}custom_wg_allowed_v4", wg.allowedIpsV4)
+        settings.putString("${prefix}custom_wg_allowed_v6", wg.allowedIpsV6)
+        settings.putInt("${prefix}custom_wg_keepalive", wg.persistentKeepalive)
     }
 
     private fun sanitizeHevLogLevel(value: String): String {
@@ -235,6 +275,9 @@ class AetherConfigRepository private constructor(private val settings: Settings)
             out = out.copy(httpProxyEnabled = true)
         }
         if (out.torEnabled && !out.httpProxyEnabled) {
+            out = out.copy(httpProxyEnabled = true)
+        }
+        if (out.exitNodeMode == ExitNodeMode.PSIPHON_POOL && !out.httpProxyEnabled) {
             out = out.copy(httpProxyEnabled = true)
         }
         if ((out.psiphonChainOuter == "wg" || out.psiphonChainOuter == "gool") && out.psiphonChainMode == PsiphonChainMode.FALLBACK) {
@@ -454,6 +497,12 @@ class AetherConfigRepository private constructor(private val settings: Settings)
         settings.putStringSet("${prefix}excluded_packages", cfg.excludedPackages)
         settings.putStringSet("${prefix}blocked_packages", cfg.blockedPackages)
         settings.putStringSet("${prefix}tunneled_packages", cfg.tunneledPackages)
+        settings.putString("${prefix}exit_node_mode", cfg.exitNodeMode.name)
+        saveCustomWgConfig(prefix, cfg.customWgConfig)
+        settings.putString("${prefix}custom_socks5_host", cfg.customSocks5Host)
+        settings.putInt("${prefix}custom_socks5_port", cfg.customSocks5Port)
+        settings.putString("${prefix}custom_socks5_username", cfg.customSocks5Username)
+        settings.putString("${prefix}custom_socks5_password", cfg.customSocks5Password)
     }
 
     fun resetToDefaults() {

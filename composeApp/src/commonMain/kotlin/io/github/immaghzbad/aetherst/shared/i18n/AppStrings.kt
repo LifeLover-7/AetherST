@@ -824,6 +824,34 @@ interface AppStrings {
     val DNS_EMPTY_SELECTION: String
     val DNS_APPLIED: String
     val TOAST_DNS_APPLIED: String
+
+    val EXIT_NODE_TITLE: String
+    val EXIT_NODE_SUBTITLE: String
+    val EXIT_NODE_DIRECT: String
+    val EXIT_NODE_DIRECT_DESC: String
+    val EXIT_NODE_PSIPHON_POOL: String
+    val EXIT_NODE_PSIPHON_POOL_DESC: String
+    val EXIT_NODE_CUSTOM_WG: String
+    val EXIT_NODE_CUSTOM_WG_DESC: String
+    val EXIT_NODE_CUSTOM_SOCKS5: String
+    val EXIT_NODE_CUSTOM_SOCKS5_DESC: String
+    val EXIT_NODE_CONFIGURE: String
+    val EXIT_NODE_WG_DIALOG_TITLE: String
+    val EXIT_NODE_WG_IMPORT_FILE: String
+    val EXIT_NODE_WG_PASTE_CONF: String
+    val EXIT_NODE_WG_CONF_PLACEHOLDER: String
+    val EXIT_NODE_WG_PARSED_SUMMARY: String
+    val EXIT_NODE_WG_ENDPOINT: String
+    val EXIT_NODE_WG_ADDRESS: String
+    val EXIT_NODE_WG_DNS: String
+    val EXIT_NODE_WG_MTU: String
+    val EXIT_NODE_WG_PUBLIC_KEY: String
+    val EXIT_NODE_WG_ALLOWED_IPS: String
+    val EXIT_NODE_SOCKS5_DIALOG_TITLE: String
+    val EXIT_NODE_SOCKS5_HOST: String
+    val EXIT_NODE_SOCKS5_PORT: String
+    val EXIT_NODE_SOCKS5_USER: String
+    val EXIT_NODE_SOCKS5_PASS: String
 }
 
 val LocalAppStrings = compositionLocalOf<AppStrings> { StringsEn }

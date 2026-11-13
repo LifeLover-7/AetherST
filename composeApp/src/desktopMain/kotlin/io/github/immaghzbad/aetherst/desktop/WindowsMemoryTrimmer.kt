@@ -54,3 +54,4 @@ object WindowsMemoryTrimmer {
         }
     }
 }
+

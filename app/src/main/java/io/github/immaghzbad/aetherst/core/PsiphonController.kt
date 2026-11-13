@@ -8,122 +8,158 @@ import io.github.immaghzbad.aetherst.shared.data.AetherConfigRepository
 import io.github.immaghzbad.aetherst.shared.data.LogRepository
 import io.github.immaghzbad.aetherst.shared.data.PsiphonEgressRegistry
 import io.github.immaghzbad.aetherst.shared.model.AetherConfig
+import io.github.immaghzbad.aetherst.shared.model.ExitNodeMode
+import io.github.immaghzbad.aetherst.shared.net.SocksPoolLoadBalancer
 import java.io.File
 import java.lang.ref.WeakReference
 import java.net.ServerSocket
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 
 object PsiphonController {
-    @Volatile private var psiphonPort: Int = 3080
+    const val POOL_SIZE = 4
+    const val BASE_PORT = 10801
+
+    @Volatile private var psiphonPort: Int = 10800
     @Volatile private var running = false
     @Volatile private var connected = false
-    @Volatile private var tunnelObj: Any? = null
+    private val tunnels = CopyOnWriteArrayList<Any>()
+    private val connectedCount = AtomicInteger(0)
     private val lastEventTime = AtomicLong(0L)
     @Volatile private var vpnServiceRef: WeakReference<VpnService>? = null
+    @Volatile private var loadBalancer: SocksPoolLoadBalancer? = null
 
     fun setVpnService(service: VpnService) {
         vpnServiceRef = WeakReference(service)
     }
 
     fun isSupported(config: AetherConfig): Boolean {
-        return config.psiphonEnabled
+        return config.psiphonEnabled || config.exitNodeMode == ExitNodeMode.PSIPHON_POOL
     }
 
     fun getUpstreamProxy(): String {
         return "socks5://127.0.0.1:$psiphonPort"
     }
 
-    private fun findFreePort(): Int {
+    private fun findFreePort(preferred: Int = 10800): Int {
         return try {
-            ServerSocket(0).use { it.localPort }
-        } catch (_: Exception) { 3080 }
+            ServerSocket(preferred).use { it.localPort }
+        } catch (_: Exception) {
+            try { ServerSocket(0).use { it.localPort } } catch (_: Exception) { preferred }
+        }
     }
 
     fun start(context: Context, config: AetherConfig, upstream: String? = null): Boolean {
         if (!isSupported(config)) return false
+        stop()
+
         return try {
-            val dir = File(context.filesDir, "psiphon")
-            if (!dir.exists()) dir.mkdirs()
-            val requested = config.psiphonSocksPort.toIntOrNull() ?: 3080
-            val port = if (requested.toString() == config.socksPort) findFreePort() else requested
-            psiphonPort = port
-            try {
-                val clazz = Class.forName("ca.psiphon.PsiphonTunnel")
-                val hostServiceClass = Class.forName("ca.psiphon.PsiphonTunnel\$HostService")
+            val basePoolDir = File(context.filesDir, "psiphon_pool")
+            if (!basePoolDir.exists()) basePoolDir.mkdirs()
+
+            val requested = config.psiphonSocksPort.toIntOrNull() ?: 10800
+            psiphonPort = if (requested.toString() == config.socksPort) findFreePort(10800) else requested
+
+            val poolPorts = (0 until POOL_SIZE).map { BASE_PORT + it }
+            val serverEntries = try {
+                context.assets.open("server_entries.txt").bufferedReader().readText().trim()
+            } catch (_: Exception) { "" }
+
+            val clazz = Class.forName("ca.psiphon.PsiphonTunnel")
+            val hostServiceClass = Class.forName("ca.psiphon.PsiphonTunnel\$HostService")
+            val hostLoggerClass = Class.forName("ca.psiphon.PsiphonTunnel\$HostLogger")
+            val hostLoaderClass = Class.forName("ca.psiphon.PsiphonTunnel\$HostLibraryLoader")
+
+            connectedCount.set(0)
+            tunnels.clear()
+
+            // 1. Initialize and start the SOCKS5 Round-Robin Load Balancer
+            val lb = SocksPoolLoadBalancer(
+                listenHost = "127.0.0.1",
+                listenPort = psiphonPort,
+                upstreamPorts = poolPorts
+            )
+            if (!lb.start()) {
+                LogRepository.e("[PsiphonPool] Failed to start load balancer on port $psiphonPort", "Psiphon")
+            }
+            loadBalancer = lb
+
+            // 2. Launch pool of 4 parallel Psiphon instances (ports 10801..10804)
+            for (i in 0 until POOL_SIZE) {
+                val instPort = BASE_PORT + i
+                val instDir = File(basePoolDir, "inst_$i")
+                if (!instDir.exists()) instDir.mkdirs()
+
+                val instIndex = i
                 val hostService = java.lang.reflect.Proxy.newProxyInstance(
                     hostServiceClass.classLoader,
-                    arrayOf(hostServiceClass, Class.forName("ca.psiphon.PsiphonTunnel\$HostLogger"), Class.forName("ca.psiphon.PsiphonTunnel\$HostLibraryLoader"))
+                    arrayOf(hostServiceClass, hostLoggerClass, hostLoaderClass)
                 ) { _, method, args ->
                     when (method.name) {
                         "getContext" -> context
-                        "getPsiphonConfig" -> buildPsiphonConfig(context, port, config.psiphonEgressRegion, upstream)
+                        "getPsiphonConfig" -> buildPsiphonConfig(instDir, instPort, config.psiphonEgressRegion, upstream)
                         "onListeningSocksProxyPort" -> {
-                            val p = args?.get(0) as? Int ?: port
-                            psiphonPort = p
-                            LogRepository.i("Psiphon listening on $p", "Psiphon")
+                            val p = args?.get(0) as? Int ?: instPort
+                            LogRepository.i("[PsiphonPool#$instIndex] Listening on port $p", "Psiphon")
                             null
                         }
                         "onConnected" -> {
+                            val c = connectedCount.incrementAndGet()
                             connected = true
                             lastEventTime.set(System.currentTimeMillis())
-                            LogRepository.i("Psiphon connected", "Psiphon")
+                            LogRepository.i("[PsiphonPool#$instIndex] Connected ($c/$POOL_SIZE active)", "Psiphon")
                             null
                         }
                         "onConnecting" -> {
                             lastEventTime.set(System.currentTimeMillis())
-                            LogRepository.i("Psiphon connecting", "Psiphon")
                             null
                         }
                         "onAvailableEgressRegions" -> {
                             val list = (args?.get(0) as? List<*>)?.mapNotNull { it?.toString()?.trim()?.uppercase() }?.filter { it.matches(Regex("^[A-Z]{2}$")) } ?: emptyList()
-                            PsiphonEgressRegistry.setAvailableRegions(list)
-                            runCatching { AetherConfigRepository.getInstance(getSettings(PlatformContext(context))).cacheEgressRegions(list) }
-                            LogRepository.i("Psiphon available egress regions: ${list.joinToString()}", "Psiphon")
+                            if (list.isNotEmpty()) {
+                                PsiphonEgressRegistry.setAvailableRegions(list)
+                                runCatching { AetherConfigRepository.getInstance(getSettings(PlatformContext(context))).cacheEgressRegions(list) }
+                            }
                             null
                         }
                         "bindToDevice" -> {
                             val fd = (args?.get(0) as? Long)?.toInt() ?: (args?.get(0) as? Int) ?: -1
-                            val ok = if (fd > 0) {
-                                vpnServiceRef?.get()?.protect(fd) ?: run {
-                                    LogRepository.e("Psiphon bindToDevice: no VpnService available to protect fd=$fd", "Psiphon")
-                                    false
-                                }
+                            if (fd > 0) {
+                                vpnServiceRef?.get()?.protect(fd) ?: false
                             } else {
-                                LogRepository.e("Psiphon bindToDevice: invalid fd=$fd", "Psiphon")
                                 false
                             }
-                            if (!ok) LogRepository.e("Psiphon bindToDevice: protect(fd=$fd) failed; routing loop may persist", "Psiphon")
                             null
                         }
                         else -> null
                     }
                 }
+
                 val newTunnel = clazz.getMethod("newPsiphonTunnel", hostServiceClass).invoke(null, hostService)
-                tunnelObj = newTunnel
-                val serverEntries = try { context.assets.open("server_entries.txt").bufferedReader().readText().trim() } catch (_: Exception) { "" }
-                val startMethod = clazz.getMethod("startTunneling", String::class.java)
-                startMethod.invoke(newTunnel, serverEntries)
-                val setVpnMode = try { clazz.getMethod("setVpnMode", Boolean::class.javaPrimitiveType) } catch (_: Exception) { null }
-                setVpnMode?.invoke(newTunnel, false)
-                running = true
-                LogRepository.i("Psiphon started on 127.0.0.1:$psiphonPort", "Psiphon")
-                true
-            } catch (e: Exception) {
-                val reason = e.message ?: "unknown error"
-                LogRepository.w("Psiphon library not found or start failed ($reason), psiphon disabled", "Psiphon")
-                running = false
-                connected = false
-                false
+                if (newTunnel != null) {
+                    val startMethod = clazz.getMethod("startTunneling", String::class.java)
+                    startMethod.invoke(newTunnel, serverEntries)
+                    val setVpnMode = try { clazz.getMethod("setVpnMode", Boolean::class.javaPrimitiveType) } catch (_: Exception) { null }
+                    setVpnMode?.invoke(newTunnel, false)
+                    tunnels.add(newTunnel)
+                }
             }
+
+            running = tunnels.isNotEmpty()
+            LogRepository.i("[PsiphonPool] Launched $POOL_SIZE parallel instances on ports ${poolPorts.joinToString()} with OSSH protocol lock and LB on $psiphonPort", "Psiphon")
+            true
         } catch (e: Exception) {
             val reason = e.message ?: "unknown error"
-            LogRepository.e("Psiphon start exception: $reason", "Psiphon")
+            LogRepository.w("[PsiphonPool] Library not found or start failed ($reason)", "Psiphon")
+            running = false
+            connected = false
             false
         }
     }
 
-    private fun buildPsiphonConfig(context: Context, port: Int, egressRegion: String = "", upstream: String? = null): String {
-        val dir = File(context.filesDir, "psiphon")
+    private fun buildPsiphonConfig(dir: File, port: Int, egressRegion: String = "", upstream: String? = null): String {
         return try {
             val json = org.json.JSONObject()
             json.put("PropagationChannelId", "FFFFFFFFFFFFFFFF")
@@ -132,7 +168,15 @@ object PsiphonController {
             json.put("EstablishTunnelTimeoutSeconds", 300)
             json.put("DataRootDirectory", dir.absolutePath)
             json.put("ClientVersion", "1")
-            json.put("TunnelProtocol", "")
+            
+            // Lock TunnelProtocol to OSSH with QUIC-OSSH fallback as requested
+            json.put("TunnelProtocol", "OSSH")
+            val protoArray = org.json.JSONArray().apply {
+                put("OSSH")
+                put("QUIC-OSSH")
+            }
+            json.put("TunnelProtocols", protoArray)
+
             json.put("RemoteServerListURL", "")
             json.put("LocalSocksProxyPort", port)
             if (!upstream.isNullOrEmpty()) json.put("UpstreamProxyURL", upstream)
@@ -145,44 +189,41 @@ object PsiphonController {
             json.toString()
         } catch (_: Exception) {
             val safeDir = dir.absolutePath.replace("\\", "\\\\")
-            "{\"LocalSocksProxyPort\":$port,\"DataRootDirectory\":\"$safeDir\"}"
+            "{\"LocalSocksProxyPort\":$port,\"DataRootDirectory\":\"$safeDir\",\"TunnelProtocol\":\"OSSH\"}"
         }
     }
 
     fun stop() {
-        if (!running) return
-        try {
-            tunnelObj?.let {
-                try {
-                    val m = it.javaClass.getMethod("stop")
-                    m.invoke(it)
-                } catch (_: Exception) {}
-            }
-        } catch (_: Exception) {}
-        tunnelObj = null
+        if (!running && tunnels.isEmpty()) return
+        for (tunnel in tunnels) {
+            try {
+                val m = tunnel.javaClass.getMethod("stop")
+                m.invoke(tunnel)
+            } catch (_: Exception) {}
+        }
+        tunnels.clear()
+        loadBalancer?.stop()
+        loadBalancer = null
         running = false
         connected = false
+        connectedCount.set(0)
         vpnServiceRef?.clear()
         vpnServiceRef = null
-        LogRepository.i("Psiphon stopped", "Psiphon")
+        LogRepository.i("[PsiphonPool] Stopped all instances and load balancer", "Psiphon")
     }
 
     fun isRunning(): Boolean {
         if (!running) return false
-        return try {
-            tunnelObj?.let {
-                try {
-                    val m = it.javaClass.getMethod("isRunning")
-                    val r = m.invoke(it)
-                    if (r is Boolean) return r
-                } catch (_: Exception) {}
-            }
-            running
-        } catch (_: Exception) { running }
+        return tunnels.any { tunnel ->
+            try {
+                val m = tunnel.javaClass.getMethod("isRunning")
+                (m.invoke(tunnel) as? Boolean) == true
+            } catch (_: Exception) { false }
+        }
     }
 
-    fun isConnected(): Boolean = connected && running
+    fun isConnected(): Boolean = connected && running && connectedCount.get() > 0
 
-    fun stableFor(graceMs: Long): Boolean = connected && running &&
+    fun stableFor(graceMs: Long): Boolean = isConnected() &&
             (System.currentTimeMillis() - lastEventTime.get()) >= graceMs
 }

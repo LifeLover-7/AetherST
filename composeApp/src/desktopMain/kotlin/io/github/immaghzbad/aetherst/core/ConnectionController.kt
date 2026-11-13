@@ -75,6 +75,8 @@ actual object ConnectionController {
         @Volatile private var tunnelModeStarted = false
         @Volatile private var activeTargetPort = 1819
         @Volatile private var isPsiphonActive = false
+        @Volatile private var wgExitTunnel: io.github.immaghzbad.aetherst.shared.net.WireGuardExitTunnel? = null
+        @Volatile private var customSocksRelay: io.github.immaghzbad.aetherst.shared.net.CustomSocks5Relay? = null
         private var statusJob: Job? = null
 
         init {
@@ -234,6 +236,36 @@ actual object ConnectionController {
                         LogRepository.w("[Controller] Psiphon wait timed out, falling back to core port $coreSocksPort", "Psiphon")
                     }
                 }
+            } else if (effectiveConfig.exitNodeMode == ExitNodeMode.CUSTOM_WG) {
+                val wgCfg = effectiveConfig.customWgConfig
+                if (wgCfg.isValid()) {
+                    val tunnel = io.github.immaghzbad.aetherst.shared.net.WireGuardExitTunnel(
+                        config = wgCfg,
+                        primarySocksHost = "127.0.0.1",
+                        primarySocksPort = coreSocksPort,
+                        localListenPort = 10805
+                    )
+                    tunnel.start()
+                    wgExitTunnel = tunnel
+                    effectiveTargetPort = 10805
+                    LogRepository.i("[Controller] Custom WireGuard Exit ready on port 10805", "WireGuard")
+                } else {
+                    LogRepository.w("[Controller] Custom WireGuard config invalid, falling back to core port $coreSocksPort", "WireGuard")
+                }
+            } else if (effectiveConfig.exitNodeMode == ExitNodeMode.CUSTOM_SOCKS5 && effectiveConfig.customSocks5Host.isNotBlank()) {
+                val relay = io.github.immaghzbad.aetherst.shared.net.CustomSocks5Relay(
+                    listenPort = 10806,
+                    primarySocksHost = "127.0.0.1",
+                    primarySocksPort = coreSocksPort,
+                    remoteHost = effectiveConfig.customSocks5Host.trim(),
+                    remotePort = effectiveConfig.customSocks5Port,
+                    username = effectiveConfig.customSocks5Username,
+                    password = effectiveConfig.customSocks5Password
+                )
+                relay.start()
+                customSocksRelay = relay
+                effectiveTargetPort = 10806
+                LogRepository.i("[Controller] Custom SOCKS5 Exit ready on port 10806", "SOCKS5")
             }
 
             currentCoroutineContext().ensureActive()
@@ -252,14 +284,15 @@ actual object ConnectionController {
         private fun startTunnelMode(config: AetherConfig, targetPort: Int) {
             if (tunnelModeStarted) return
             tunnelModeStarted = true
+            val effectiveMtu = 1280.coerceAtMost(config.mtu.coerceIn(576, 9000))
             TunHelper.start(
                 socksTargetPort = targetPort,
-                configuredMtu = config.mtu,
+                configuredMtu = effectiveMtu,
                 bypassExes = config.excludedPackages,
                 blockedExes = config.blockedPackages,
                 tunnelAllApps = config.tunnelAllApps
             )
-            LogRepository.i("[Controller] TUN helper started on port $targetPort, bypass=${config.excludedPackages.size}, blocked=${config.blockedPackages.size}")
+            LogRepository.i("[Controller] TUN helper started on port $targetPort, mtu=$effectiveMtu, bypass=${config.excludedPackages.size}, blocked=${config.blockedPackages.size}")
         }
 
         fun stop() {
@@ -282,6 +315,10 @@ actual object ConnectionController {
             statusJob = null
 
             try { PsiphonController.stop() } catch (_: Throwable) {}
+            try { wgExitTunnel?.stop() } catch (_: Throwable) {}
+            wgExitTunnel = null
+            try { customSocksRelay?.stop() } catch (_: Throwable) {}
+            customSocksRelay = null
             try { runner.stop() } catch (_: Throwable) {}
             try { CloakController.stop() } catch (_: Throwable) {}
 

@@ -70,6 +70,39 @@ enum class TunnelEngine(val displayName: String) {
 }
 
 @Serializable
+enum class ExitNodeMode(val rawValue: String, val displayName: String) {
+    DIRECT("direct", "Direct Primary Tunnel"),
+    PSIPHON_POOL("psiphon_pool", "Psiphon Multi-Core"),
+    CUSTOM_WG("custom_wg", "Custom WireGuard Exit"),
+    CUSTOM_SOCKS5("custom_socks5", "Custom SOCKS5")
+}
+
+@Serializable
+data class CustomWireGuardConfig(
+    val rawConfig: String = "",
+    val privateKey: String = "",
+    val addressV4: String = "",
+    val addressV6: String = "",
+    val dns: String = "1.1.1.1",
+    val mtu: Int = 1280,
+    val publicKey: String = "",
+    val endpoint: String = "",
+    val allowedIpsV4: String = "0.0.0.0/0",
+    val allowedIpsV6: String = "::/0",
+    val persistentKeepalive: Int = 25
+) {
+    fun isValid(): Boolean = privateKey.isNotBlank() && publicKey.isNotBlank() && endpoint.isNotBlank()
+    val dnsServers: List<String> get() = dns.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+    fun filterForPrimarySupport(supportsIpv6: Boolean): CustomWireGuardConfig {
+        return if (supportsIpv6) {
+            this
+        } else {
+            copy(addressV6 = "", allowedIpsV6 = "")
+        }
+    }
+}
+
+@Serializable
 enum class PsiphonChainMode(val rawValue: String, val displayName: String) {
     AUTO("auto", "Auto"),
     ALWAYS("always", "Always"),
@@ -185,7 +218,7 @@ data class AetherConfig(
     val wgEndpointCooldownSecs: Int = 300,
     val noProfileRetry: Boolean = false,
     val tlsGroups: String = "",
-    val mtu: Int = 1320,
+    val mtu: Int = 1280,
     val connectionMode: ConnectionMode = if (isWindows) ConnectionMode.SYSTEM_PROXY else ConnectionMode.TUNNEL,
     val tunnelEngine: TunnelEngine = TunnelEngine.HEV_TUN2SOCKS,
     val excludedPackages: Set<String> = emptySet(),
@@ -261,7 +294,13 @@ data class AetherConfig(
     val ipInfoProvider: IpInfoProvider = IpInfoProvider.AUTO,
     val connectButtonStyle: String = "capsule",
     val appLanguage: String = "auto",
-    val appTheme: String = "default"
+    val appTheme: String = "default",
+    val exitNodeMode: ExitNodeMode = ExitNodeMode.DIRECT,
+    val customWgConfig: CustomWireGuardConfig = CustomWireGuardConfig(),
+    val customSocks5Host: String = "",
+    val customSocks5Port: Int = 1080,
+    val customSocks5Username: String = "",
+    val customSocks5Password: String = ""
 ) {
     fun zeroTrustError(): String? {
         if (protocol != AetherProtocol.ZERO_TRUST) return null
@@ -315,7 +354,7 @@ data class AetherConfig(
     }
 
     fun effectiveIpMode(): AetherIpMode = if (ipMode == AetherIpMode.AUTO) AetherIpMode.DUAL else ipMode
-    fun isPsiphonActive(): Boolean = chainProvider == ChainProvider.PSIPHON && psiphonEnabled
+    fun isPsiphonActive(): Boolean = (chainProvider == ChainProvider.PSIPHON && psiphonEnabled) || exitNodeMode == ExitNodeMode.PSIPHON_POOL
     fun isTorActive(): Boolean = chainProvider == ChainProvider.TOR && torEnabled
 }
 

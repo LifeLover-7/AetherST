@@ -83,6 +83,8 @@ fun DashboardScreen(
     var supportDialogAuto by remember { mutableStateOf(true) }
     var showPsiphonSheet by remember { mutableStateOf(false) }
     var showTorSheet by remember { mutableStateOf(false) }
+    var showCustomWgDialog by remember { mutableStateOf(false) }
+    var showCustomSocks5Dialog by remember { mutableStateOf(false) }
     val strings = LocalAppStrings.current
     val uriHandler = LocalUriHandler.current
     val settings = platformContext?.let { getSettings(it) }
@@ -412,6 +414,15 @@ fun DashboardScreen(
                         }
                     }
 
+                    ExitNodeCard(
+                        config = config,
+                        onUpdateConfig = onUpdateConfig,
+                        onOpenWgDialog = { showCustomWgDialog = true },
+                        onOpenSocks5Dialog = { showCustomSocks5Dialog = true },
+                        enabled = connectionStatus == ConnectionStatus.STOPPED || connectionStatus == ConnectionStatus.ERROR,
+                        scaleFactor = scaleFactor
+                    )
+
                     if (isDesktop && isWindows) {
                         IosConnectionModeSegmentedControl(
                             selectedMode = config.connectionMode,
@@ -473,6 +484,34 @@ fun DashboardScreen(
                 onUpdateConfig = onUpdateConfig,
                 onDismiss = { showTorSheet = false },
                 scaleFactor = scaleFactor
+            )
+        }
+        if (showCustomWgDialog) {
+            CustomWireGuardDialog(
+                initialConfig = config.customWgConfig,
+                onSave = { updatedWg ->
+                    onUpdateConfig(config.copy(customWgConfig = updatedWg))
+                },
+                onDismiss = { showCustomWgDialog = false }
+            )
+        }
+        if (showCustomSocks5Dialog) {
+            CustomSocks5Dialog(
+                initialHost = config.customSocks5Host,
+                initialPort = config.customSocks5Port,
+                initialUser = config.customSocks5Username,
+                initialPass = config.customSocks5Password,
+                onSave = { host, port, user, pass ->
+                    onUpdateConfig(
+                        config.copy(
+                            customSocks5Host = host,
+                            customSocks5Port = port,
+                            customSocks5Username = user,
+                            customSocks5Password = pass
+                        )
+                    )
+                },
+                onDismiss = { showCustomSocks5Dialog = false }
             )
         }
     }
@@ -1179,6 +1218,210 @@ fun IosConnectionModeSegmentedControl(
                         letterSpacing = 0.3.sp,
                         maxLines = 1
                     )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ExitNodeCard(
+    config: AetherConfig,
+    onUpdateConfig: (AetherConfig) -> Unit,
+    onOpenWgDialog: () -> Unit,
+    onOpenSocks5Dialog: () -> Unit,
+    enabled: Boolean = true,
+    scaleFactor: Float = 1f
+) {
+    val strings = LocalAppStrings.current
+    val currentMode = config.exitNodeMode
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = IosCardBg),
+        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(Color.White.copy(alpha = 0.08f)))
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            // Header
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(IosActiveBlue),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.AltRoute, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = strings.EXIT_NODE_TITLE,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = (13 * scaleFactor).sp
+                    )
+                    Text(
+                        text = strings.EXIT_NODE_SUBTITLE,
+                        color = IosSecondaryLabel,
+                        fontSize = (10 * scaleFactor).sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // 4-item Segmented Selector
+            val options = listOf(
+                ExitNodeMode.DIRECT to (if (strings is StringsFa) "مستقیم" else "Direct"),
+                ExitNodeMode.PSIPHON_POOL to (if (strings is StringsFa) "سایفون Pool" else "Psiphon 4x"),
+                ExitNodeMode.CUSTOM_WG to (if (strings is StringsFa) "وایرگارد WG" else "WireGuard"),
+                ExitNodeMode.CUSTOM_SOCKS5 to (if (strings is StringsFa) "ساکس SOCKS" else "SOCKS5")
+            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(IosGroupBg)
+                    .padding(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
+            ) {
+                options.forEach { (mode, label) ->
+                    val selected = currentMode == mode
+                    val bg by animateColorAsState(targetValue = if (selected) IosActiveBlue else Color.Transparent, label = "exitBg")
+                    val textColor by animateColorAsState(targetValue = if (selected) Color.White else IosSecondaryLabel, label = "exitText")
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height((32 * scaleFactor).dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(bg)
+                            .clickable(enabled = enabled) {
+                                onUpdateConfig(config.copy(exitNodeMode = mode))
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = label,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            color = textColor,
+                            fontSize = (10.5 * scaleFactor).sp,
+                            maxLines = 1
+                        )
+                    }
+                }
+            }
+
+            // Description / Action Banner based on active selection
+            Spacer(modifier = Modifier.height(8.dp))
+            when (currentMode) {
+                ExitNodeMode.DIRECT -> {
+                    Text(
+                        text = strings.EXIT_NODE_DIRECT_DESC,
+                        color = IosSecondaryLabel,
+                        fontSize = (10 * scaleFactor).sp,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
+                ExitNodeMode.PSIPHON_POOL -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = strings.EXIT_NODE_PSIPHON_POOL_DESC,
+                            color = IosSecondaryLabel,
+                            fontSize = (10 * scaleFactor).sp,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(IosActiveGreen.copy(alpha = 0.2f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                        ) {
+                            Text(
+                                text = "OSSH (4x)",
+                                color = IosActiveGreen,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 9.sp
+                            )
+                        }
+                    }
+                }
+                ExitNodeMode.CUSTOM_WG -> {
+                    val wgEndpoint = config.customWgConfig.endpoint.ifBlank { null }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(IosGroupBg.copy(alpha = 0.6f))
+                            .clickable { onOpenWgDialog() }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.EXIT_NODE_CUSTOM_WG,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                                fontSize = (11 * scaleFactor).sp
+                            )
+                            Text(
+                                text = wgEndpoint ?: strings.EXIT_NODE_CONFIGURE,
+                                color = if (wgEndpoint != null) IosActiveGreen else IosActiveBlue,
+                                fontSize = (10 * scaleFactor).sp,
+                                maxLines = 1
+                            )
+                        }
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = IosActiveBlue,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                ExitNodeMode.CUSTOM_SOCKS5 -> {
+                    val socksTarget = if (config.customSocks5Host.isNotBlank()) "${config.customSocks5Host}:${config.customSocks5Port}" else null
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(IosGroupBg.copy(alpha = 0.6f))
+                            .clickable { onOpenSocks5Dialog() }
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = strings.EXIT_NODE_CUSTOM_SOCKS5,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color.White,
+                                fontSize = (11 * scaleFactor).sp
+                            )
+                            Text(
+                                text = socksTarget ?: strings.EXIT_NODE_CONFIGURE,
+                                color = if (socksTarget != null) IosActiveGreen else IosActiveBlue,
+                                fontSize = (10 * scaleFactor).sp,
+                                maxLines = 1
+                            )
+                        }
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = null,
+                            tint = IosActiveBlue,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }

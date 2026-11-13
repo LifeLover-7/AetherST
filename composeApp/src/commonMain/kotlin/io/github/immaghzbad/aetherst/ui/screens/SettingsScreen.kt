@@ -121,9 +121,12 @@ import io.github.immaghzbad.aetherst.shared.model.AetherProtocol
 import io.github.immaghzbad.aetherst.shared.model.AetherScanMode
 import io.github.immaghzbad.aetherst.shared.model.ChainProvider
 import io.github.immaghzbad.aetherst.shared.model.ConnectionMode
+import io.github.immaghzbad.aetherst.shared.model.ExitNodeMode
 import io.github.immaghzbad.aetherst.shared.model.IpInfoProvider
 import io.github.immaghzbad.aetherst.shared.model.TunnelEngine
 import io.github.immaghzbad.aetherst.shared.ui.components.AppDivider
+import io.github.immaghzbad.aetherst.shared.ui.components.CustomSocks5Dialog
+import io.github.immaghzbad.aetherst.shared.ui.components.CustomWireGuardDialog
 import io.github.immaghzbad.aetherst.shared.ui.components.IosActionRow
 import io.github.immaghzbad.aetherst.shared.ui.components.IosConfirmationDialog
 import io.github.immaghzbad.aetherst.shared.ui.components.IosGroupCard
@@ -440,6 +443,9 @@ private fun ConnectionPage(
     onOpenRoutingRules: () -> Unit
 ) {
     val strings = LocalAppStrings.current
+    var showCustomWgDialog by remember { mutableStateOf(false) }
+    var showCustomSocks5Dialog by remember { mutableStateOf(false) }
+
     IosGroupCard {
         Column {
             val opts = if (isAndroid) listOf(strings.TUN_MODE, strings.PROXY_ONLY) else listOf(strings.TUN_MODE_GLOBAL, strings.SYSTEM_PROXY, strings.PROXY_ONLY)
@@ -490,12 +496,93 @@ private fun ConnectionPage(
                 IosSwitchRow(icon = Icons.Default.Shield, iconBg = IosActiveGreen, title = strings.PSIPHON_ONLY, subtitle = strings.PSIPHON_ONLY_SUB, checked = config.psiphonOnly, onCheckedChange = { onUpdateConfig(config.copy(psiphonOnly = it)) }, testTag = "switch_psiphon_only")
             }
 
+            AppDivider()
+            val exitOptions = listOf(
+                strings.EXIT_NODE_DIRECT,
+                strings.EXIT_NODE_PSIPHON_POOL,
+                strings.EXIT_NODE_CUSTOM_WG,
+                strings.EXIT_NODE_CUSTOM_SOCKS5
+            )
+            val exitIdx = when (config.exitNodeMode) {
+                ExitNodeMode.DIRECT -> 0
+                ExitNodeMode.PSIPHON_POOL -> 1
+                ExitNodeMode.CUSTOM_WG -> 2
+                ExitNodeMode.CUSTOM_SOCKS5 -> 3
+            }
+            IosPickerRow(
+                icon = Icons.AutoMirrored.Filled.AltRoute,
+                iconBg = AppPalette.accent,
+                title = strings.EXIT_NODE_TITLE,
+                value = exitOptions[exitIdx],
+                options = exitOptions,
+                onOptionSelected = { idx ->
+                    val mode = when (idx) {
+                        1 -> ExitNodeMode.PSIPHON_POOL
+                        2 -> ExitNodeMode.CUSTOM_WG
+                        3 -> ExitNodeMode.CUSTOM_SOCKS5
+                        else -> ExitNodeMode.DIRECT
+                    }
+                    onUpdateConfig(config.copy(exitNodeMode = mode))
+                }
+            )
+            if (config.exitNodeMode == ExitNodeMode.CUSTOM_WG) {
+                AppDivider()
+                val wgSummary = config.customWgConfig.endpoint.ifBlank { strings.EXIT_NODE_CONFIGURE }
+                IosActionRow(
+                    icon = Icons.Default.Tune,
+                    iconBg = IosActiveBlue,
+                    title = strings.EXIT_NODE_CUSTOM_WG,
+                    subtitle = wgSummary,
+                    onClick = { showCustomWgDialog = true }
+                )
+            } else if (config.exitNodeMode == ExitNodeMode.CUSTOM_SOCKS5) {
+                AppDivider()
+                val socksSummary = if (config.customSocks5Host.isNotBlank()) "${config.customSocks5Host}:${config.customSocks5Port}" else strings.EXIT_NODE_CONFIGURE
+                IosActionRow(
+                    icon = Icons.Default.Tune,
+                    iconBg = IosActiveBlue,
+                    title = strings.EXIT_NODE_CUSTOM_SOCKS5,
+                    subtitle = socksSummary,
+                    onClick = { showCustomSocks5Dialog = true }
+                )
+            }
+
             if (isAndroid) {
                 AppDivider()
                 IosSwitchRow(icon = Icons.Default.Share, iconBg = AppPalette.accentVariantAlt, title = strings.SHARE_HOTSPOT, subtitle = strings.SHARE_HOTSPOT_SUB, checked = config.shareHotspot, onCheckedChange = { onUpdateConfig(config.copy(shareHotspot = it)) }, testTag = "switch_share_hotspot")
                 if (config.shareHotspot) HotspotInfo(config)
             }
         }
+    }
+
+    if (showCustomWgDialog) {
+        CustomWireGuardDialog(
+            initialConfig = config.customWgConfig,
+            onSave = { updatedWg ->
+                onUpdateConfig(config.copy(customWgConfig = updatedWg))
+            },
+            onDismiss = { showCustomWgDialog = false }
+        )
+    }
+
+    if (showCustomSocks5Dialog) {
+        CustomSocks5Dialog(
+            initialHost = config.customSocks5Host,
+            initialPort = config.customSocks5Port,
+            initialUser = config.customSocks5Username,
+            initialPass = config.customSocks5Password,
+            onSave = { host, port, user, pass ->
+                onUpdateConfig(
+                    config.copy(
+                        customSocks5Host = host,
+                        customSocks5Port = port,
+                        customSocks5Username = user,
+                        customSocks5Password = pass
+                    )
+                )
+            },
+            onDismiss = { showCustomSocks5Dialog = false }
+        )
     }
 }
 
