@@ -1273,9 +1273,16 @@ class ConnectionController private constructor(context: Context) : ConnectionCon
                 ConnectionStatus.ERROR -> {
                     TorController.notifyCoreDead()
                     if (current == ConnectionStatus.RUNNING || current == ConnectionStatus.RECONNECTING) {
-                        LogRepository.e("[Controller] Core reported error")
-                        stopTimer()
-                        ConnectionStatus.ERROR
+                        val cfg = AetherConfigRepository.getInstance(getSettings(PlatformContext(appContext))).config.value
+                        if (cfg.smartReconnect) {
+                            LogRepository.w("[Controller] Core error during active session, smartReconnect enabled -> holding in RECONNECTING")
+                            pauseTimer()
+                            ConnectionStatus.RECONNECTING
+                        } else {
+                            LogRepository.e("[Controller] Core reported error")
+                            stopTimer()
+                            ConnectionStatus.ERROR
+                        }
                     } else {
                         LogRepository.e("[Controller] Core error during $current")
                         coreStatus
@@ -1285,9 +1292,16 @@ class ConnectionController private constructor(context: Context) : ConnectionCon
                     TorController.notifyCoreDead()
                     if (current == ConnectionStatus.RUNNING || current == ConnectionStatus.RECONNECTING) {
                         if (mimGuardActive) return@update current
-                        LogRepository.w("[Controller] Core stopped unexpectedly")
-                        stopTimer()
-                        ConnectionStatus.ERROR
+                        val cfg = AetherConfigRepository.getInstance(getSettings(PlatformContext(appContext))).config.value
+                        if (cfg.smartReconnect) {
+                            LogRepository.w("[Controller] Core stopped unexpectedly, smartReconnect enabled -> holding in RECONNECTING")
+                            pauseTimer()
+                            ConnectionStatus.RECONNECTING
+                        } else {
+                            LogRepository.w("[Controller] Core stopped unexpectedly")
+                            stopTimer()
+                            ConnectionStatus.ERROR
+                        }
                     } else if (current == ConnectionStatus.STOPPING) {
                         stopTimer()
                         ConnectionStatus.STOPPED

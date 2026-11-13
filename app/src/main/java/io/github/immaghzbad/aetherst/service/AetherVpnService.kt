@@ -490,18 +490,22 @@ class AetherVpnService : VpnService() {
         val supportsIpv6 = config.ipMode == AetherIpMode.IPV4_IPV6 || config.ipMode == AetherIpMode.IPV6_ONLY || config.ipv6Leak
         val filteredWg = wgConfig?.filterForPrimarySupport(supportsIpv6)
 
+        builder.addAddress("198.18.0.1", 24)
+        builder.addAddress("fd00::1", 120)
+
         if (filteredWg != null && filteredWg.addressV4.isNotBlank()) {
             val v4Prefix = filteredWg.addressV4.substringBefore("/")
             val v4Cidr = filteredWg.addressV4.substringAfter("/", "24").toIntOrNull() ?: 24
-            builder.addAddress(v4Prefix, v4Cidr)
+            if (v4Prefix != "198.18.0.1") {
+                runCatching { builder.addAddress(v4Prefix, v4Cidr) }
+            }
             if (filteredWg.addressV6 != null) {
                 val v6Prefix = filteredWg.addressV6.substringBefore("/")
                 val v6Cidr = filteredWg.addressV6.substringAfter("/", "120").toIntOrNull() ?: 120
-                runCatching { builder.addAddress(v6Prefix, v6Cidr) }
+                if (v6Prefix != "fd00::1") {
+                    runCatching { builder.addAddress(v6Prefix, v6Cidr) }
+                }
             }
-        } else {
-            builder.addAddress("198.18.0.1", 24)
-            builder.addAddress("fd00::1", 120)
         }
         builder.addRoute("0.0.0.0", 0)
 
@@ -677,6 +681,8 @@ class AetherVpnService : VpnService() {
                 wgExitTunnel = null
                 customSocksRelay?.stop()
                 customSocksRelay = null
+                try { PsiphonController.stop() } catch (_: Throwable) {}
+                ActiveProxyProvider.psiphonProxyUrl = null
                 closeVpnInterface(attemptId)
                 activeTunnelEngine = null
                 lastHevUpstream = null
@@ -849,7 +855,7 @@ class AetherVpnService : VpnService() {
                         val primaryPort = config.socksPort.toIntOrNull() ?: 1819
                         val tunnel = WireGuardExitTunnel(
                             config = wgCfg,
-                            primarySocksHost = config.socksHost,
+                            primarySocksHost = "127.0.0.1",
                             primarySocksPort = primaryPort,
                             localListenPort = localPort
                         )
@@ -859,7 +865,7 @@ class AetherVpnService : VpnService() {
                     return "127.0.0.1" to localPort
                 } else {
                     LogRepository.w("[VpnService] Custom WG config invalid, falling back to direct primary socks")
-                    return config.socksHost to (config.socksPort.toIntOrNull() ?: 1819)
+                    return "127.0.0.1" to (config.socksPort.toIntOrNull() ?: 1819)
                 }
             }
             ExitNodeMode.CUSTOM_SOCKS5 -> {
@@ -869,7 +875,7 @@ class AetherVpnService : VpnService() {
                         val primaryPort = config.socksPort.toIntOrNull() ?: 1819
                         val relay = CustomSocks5Relay(
                             listenPort = localPort,
-                            primarySocksHost = config.socksHost,
+                            primarySocksHost = "127.0.0.1",
                             primarySocksPort = primaryPort,
                             remoteHost = config.customSocks5Host.trim(),
                             remotePort = config.customSocks5Port,
@@ -882,7 +888,7 @@ class AetherVpnService : VpnService() {
                     return "127.0.0.1" to localPort
                 } else {
                     LogRepository.w("[VpnService] Custom SOCKS5 host blank, falling back to direct primary socks")
-                    return config.socksHost to (config.socksPort.toIntOrNull() ?: 1819)
+                    return "127.0.0.1" to (config.socksPort.toIntOrNull() ?: 1819)
                 }
             }
         }
