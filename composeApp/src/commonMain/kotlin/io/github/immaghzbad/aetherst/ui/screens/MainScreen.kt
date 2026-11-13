@@ -292,7 +292,8 @@ private fun DashboardContent(viewModel: AetherViewModel, scaleFactor: Float, pla
                         appVersion = viewModel.appVersion,
                         bottomContentPadding = totalNavBarHeight,
                         platformContext = platformContext,
-                        onSwipeDragging = { isSwipeDragging = it }
+                        onSwipeDragging = { isSwipeDragging = it },
+                        onShowToast = { msg, isErr -> viewModel.showToast(msg, isErr) }
                     )
                     Screen.Settings -> SettingsScreen(
                         config = config,

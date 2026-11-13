@@ -75,7 +75,8 @@ fun DashboardScreen(
     onOpenSettingsToProtocol: () -> Unit = {},
     bottomContentPadding: Dp = 0.dp,
     platformContext: PlatformContext? = null,
-    onSwipeDragging: (Boolean) -> Unit = {}
+    onSwipeDragging: (Boolean) -> Unit = {},
+    onShowToast: (String, Boolean) -> Unit = { _, _ -> }
 ) {
     var showProxyOverlay by remember { mutableStateOf(true) }
     var showAdminRequiredDialog by remember { mutableStateOf(false) }
@@ -489,10 +490,12 @@ fun DashboardScreen(
         if (showCustomWgDialog) {
             CustomWireGuardDialog(
                 initialConfig = config.customWgConfig,
+                connectionStatus = connectionStatus,
                 onSave = { updatedWg ->
                     onUpdateConfig(config.copy(customWgConfig = updatedWg))
                 },
-                onDismiss = { showCustomWgDialog = false }
+                onDismiss = { showCustomWgDialog = false },
+                onSuccessToast = { msg -> onShowToast(msg, false) }
             )
         }
         if (showCustomSocks5Dialog) {

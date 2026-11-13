@@ -6,13 +6,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -20,30 +20,31 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import io.github.immaghzbad.aetherst.shared.i18n.LocalAppStrings
+import io.github.immaghzbad.aetherst.shared.model.ConnectionStatus
 import io.github.immaghzbad.aetherst.shared.model.CustomWireGuardConfig
+import io.github.immaghzbad.aetherst.shared.platform.Bridge
 import io.github.immaghzbad.aetherst.shared.ui.theme.AppPalette
 import io.github.immaghzbad.aetherst.shared.util.WireGuardConfigParser
 
 @Composable
 fun CustomWireGuardDialog(
     initialConfig: CustomWireGuardConfig,
+    connectionStatus: ConnectionStatus = ConnectionStatus.STOPPED,
     onSave: (CustomWireGuardConfig) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onSuccessToast: ((String) -> Unit)? = null
 ) {
     val strings = LocalAppStrings.current
     val clipboardManager = LocalClipboardManager.current
-    val focusManager = LocalFocusManager.current
 
     var rawConfigText by remember { mutableStateOf(initialConfig.rawConfig) }
     var parsedConfig by remember {
@@ -55,6 +56,9 @@ fun CustomWireGuardDialog(
             }
         )
     }
+
+    var showProtonWebView by remember { mutableStateOf(false) }
+    var showTunnelAdvisoryDialog by remember { mutableStateOf(false) }
 
     fun updateFromRaw(text: String) {
         rawConfigText = text
@@ -70,7 +74,7 @@ fun CustomWireGuardDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
-                .fillMaxHeight(0.88f)
+                .fillMaxHeight(0.90f)
                 .clip(RoundedCornerShape(24.dp))
                 .border(1.dp, Color.White.copy(alpha = 0.12f), RoundedCornerShape(24.dp)),
             colors = CardDefaults.cardColors(containerColor = AppPalette.surfaceRaised),
@@ -122,28 +126,124 @@ fun CustomWireGuardDialog(
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // Paste from clipboard button
+                    // Proton Auto-Import Primary Action Banner
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable {
+                                val isPrimaryConnected = connectionStatus == ConnectionStatus.RUNNING || connectionStatus == ConnectionStatus.TUN_ACTIVE
+                                if (!isPrimaryConnected) {
+                                    showTunnelAdvisoryDialog = true
+                                } else {
+                                    showProtonWebView = true
+                                }
+                            },
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF6D4AFF).copy(alpha = 0.18f)),
+                        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(Color(0xFF6D4AFF).copy(alpha = 0.5f)))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFF6D4AFF)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.Default.Shield,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = strings.PROTON_IMPORT_BUTTON,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = strings.PROTON_WEBVIEW_SUBTITLE,
+                                        color = AppPalette.textSecondary,
+                                        fontSize = 10.sp,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = {
+                                    val isPrimaryConnected = connectionStatus == ConnectionStatus.RUNNING || connectionStatus == ConnectionStatus.TUN_ACTIVE
+                                    if (!isPrimaryConnected) {
+                                        showTunnelAdvisoryDialog = true
+                                    } else {
+                                        showProtonWebView = true
+                                    }
+                                },
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6D4AFF)),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                            ) {
+                                Text("Proton", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Secondary action buttons: Import .conf file & Paste from clipboard
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        OutlinedButton(
+                            onClick = {
+                                Bridge.pickFile?.invoke { fileContent ->
+                                    if (!fileContent.isNullOrBlank()) {
+                                        updateFromRaw(fileContent)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                            border = ButtonDefaults.outlinedButtonBorder.copy(brush = SolidColor(Color.White.copy(alpha = 0.2f)))
+                        ) {
+                            Icon(Icons.Default.FileOpen, null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(strings.EXIT_NODE_WG_IMPORT_FILE, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        }
+
                         OutlinedButton(
                             onClick = {
                                 clipboardManager.getText()?.text?.let { text ->
                                     if (text.isNotBlank()) updateFromRaw(text)
                                 }
                             },
+                            modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.outlinedButtonColors(contentColor = AppPalette.accent),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(AppPalette.accent.copy(alpha = 0.5f)))
+                            border = ButtonDefaults.outlinedButtonBorder.copy(brush = SolidColor(AppPalette.accent.copy(alpha = 0.5f)))
                         ) {
-                            Icon(Icons.Default.ContentPaste, null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(strings.EXIT_NODE_WG_PASTE_CONF, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Icon(Icons.Default.ContentPaste, null, modifier = Modifier.size(15.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(strings.EXIT_NODE_WG_PASTE_CONF, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     // Raw .conf Text Area
                     Text(
@@ -158,7 +258,7 @@ fun CustomWireGuardDialog(
                         onValueChange = { updateFromRaw(it) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(140.dp),
+                            .height(120.dp),
                         placeholder = {
                             Text(
                                 text = strings.EXIT_NODE_WG_CONF_PLACEHOLDER,
@@ -181,14 +281,14 @@ fun CustomWireGuardDialog(
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
 
                     // Parsed Summary Card
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = AppPalette.divider.copy(alpha = 0.5f)),
-                        border = CardDefaults.outlinedCardBorder().copy(brush = androidx.compose.ui.graphics.SolidColor(Color.White.copy(alpha = 0.08f)))
+                        border = CardDefaults.outlinedCardBorder().copy(brush = SolidColor(Color.White.copy(alpha = 0.08f)))
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
                             Row(
@@ -271,6 +371,43 @@ fun CustomWireGuardDialog(
             }
         }
     }
+
+    // Advisory dialog when primary tunnel is not connected
+    if (showTunnelAdvisoryDialog) {
+        IosConfirmationDialog(
+            title = strings.PROTON_CONNECT_PRIMARY_FIRST_TITLE,
+            message = strings.PROTON_CONNECT_PRIMARY_FIRST_DESC,
+            confirmText = strings.PROTON_OPEN_ANYWAY,
+            confirmColor = Color(0xFF6D4AFF),
+            onConfirm = {
+                showTunnelAdvisoryDialog = false
+                showProtonWebView = true
+            },
+            onDismiss = {
+                showTunnelAdvisoryDialog = false
+            }
+        )
+    }
+
+    // In-app Proton VPN WebView with client-side blob download interceptor
+    if (showProtonWebView) {
+        ProtonVpnWebView(
+            url = "https://account.protonvpn.com/downloads",
+            onConfigExtracted = { extractedContent ->
+                val parsed = WireGuardConfigParser.parse(extractedContent)
+                if (parsed.isValid()) {
+                    onSave(parsed)
+                    showProtonWebView = false
+                    onSuccessToast?.invoke(strings.PROTON_CONFIG_SUCCESS)
+                    onDismiss()
+                } else {
+                    updateFromRaw(extractedContent)
+                    showProtonWebView = false
+                }
+            },
+            onClose = { showProtonWebView = false }
+        )
+    }
 }
 
 @Composable
@@ -292,4 +429,3 @@ private fun ConfigSummaryRow(label: String, value: String) {
         )
     }
 }
-

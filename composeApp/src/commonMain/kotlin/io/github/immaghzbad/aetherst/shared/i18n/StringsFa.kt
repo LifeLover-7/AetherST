@@ -852,4 +852,14 @@ object StringsFa : AppStrings {
     override val EXIT_NODE_SOCKS5_PORT = "پورت پروکسی"
     override val EXIT_NODE_SOCKS5_USER = "نام کاربری (اختیاری)"
     override val EXIT_NODE_SOCKS5_PASS = "رمز عبور (اختیاری)"
+
+    override val PROTON_IMPORT_BUTTON = "دریافت خودکار از پروتون (Proton VPN)"
+    override val PROTON_CONNECT_PRIMARY_FIRST_TITLE = "ابتدا تانل اول را روشن کنید"
+    override val PROTON_CONNECT_PRIMARY_FIRST_DESC = "سایت پروتون فیلتر است. برای باز شدن صفحه لاگین و دریافت کانفیگ بدون مشکل، ابتدا تانل اصلی (AetherST) را متصل کنید. آیا مایلید به هر حال باز شود؟"
+    override val PROTON_OPEN_ANYWAY = "باز کردن به هر حال"
+    override val PROTON_WEBVIEW_TITLE = "حساب کاربری Proton VPN"
+    override val PROTON_WEBVIEW_SUBTITLE = "وارد اکانت شده، کشور مورد نظر را انتخاب و کانفیگ WireGuard را دانلود کنید"
+    override val PROTON_CONFIG_SUCCESS = "کانفیگ وایرگارد پروتون با موفقیت دریافت و فعال شد!"
+    override val PROTON_DESKTOP_NOTICE = "صفحه دانلود پروتون در مرورگر باز شد. پس از دانلود فایل، آن را در این بخش پیست یا ایمپورت کنید."
+    override val TOAST_PROTON_CONFIG_SUCCESS = "سرور پروتون با موفقیت آماده و فعال شد!"
 }

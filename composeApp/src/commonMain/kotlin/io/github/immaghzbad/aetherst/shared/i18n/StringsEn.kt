@@ -852,5 +852,15 @@ object StringsEn : AppStrings {
     override val EXIT_NODE_SOCKS5_PORT = "Port"
     override val EXIT_NODE_SOCKS5_USER = "Username (Optional)"
     override val EXIT_NODE_SOCKS5_PASS = "Password (Optional)"
+
+    override val PROTON_IMPORT_BUTTON = "Auto-Import from Proton Account"
+    override val PROTON_CONNECT_PRIMARY_FIRST_TITLE = "Connect Primary Tunnel First"
+    override val PROTON_CONNECT_PRIMARY_FIRST_DESC = "Proton VPN services are blocked on restricted networks. Please connect your primary tunnel (WireGuard / MASQUE / GOOL) first so the Proton login page can open without censorship."
+    override val PROTON_OPEN_ANYWAY = "Open Anyway"
+    override val PROTON_WEBVIEW_TITLE = "Proton VPN Account"
+    override val PROTON_WEBVIEW_SUBTITLE = "Log in, select country and download WireGuard config"
+    override val PROTON_CONFIG_SUCCESS = "Proton WireGuard configuration successfully imported and activated!"
+    override val PROTON_DESKTOP_NOTICE = "Proton VPN download page opened in browser. After downloading the .conf file, paste or import it here."
+    override val TOAST_PROTON_CONFIG_SUCCESS = "Proton VPN server is ready!"
 }
 

@@ -852,6 +852,16 @@ interface AppStrings {
     val EXIT_NODE_SOCKS5_PORT: String
     val EXIT_NODE_SOCKS5_USER: String
     val EXIT_NODE_SOCKS5_PASS: String
+
+    val PROTON_IMPORT_BUTTON: String
+    val PROTON_CONNECT_PRIMARY_FIRST_TITLE: String
+    val PROTON_CONNECT_PRIMARY_FIRST_DESC: String
+    val PROTON_OPEN_ANYWAY: String
+    val PROTON_WEBVIEW_TITLE: String
+    val PROTON_WEBVIEW_SUBTITLE: String
+    val PROTON_CONFIG_SUCCESS: String
+    val PROTON_DESKTOP_NOTICE: String
+    val TOAST_PROTON_CONFIG_SUCCESS: String
 }
 
 val LocalAppStrings = compositionLocalOf<AppStrings> { StringsEn }
